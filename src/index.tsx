@@ -1,22 +1,18 @@
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules } from 'react-native';
+import Base from './Base';
+import type { GizResult, GizCallback } from './types';
 
-const LINKING_ERROR =
-  `The package 'react-native-gizwits-pad-sdk' doesn't seem to be linked. Make sure: \n\n` +
-  Platform.select({ ios: "- You have run 'pod install'\n", default: '' }) +
-  '- You rebuilt the app after installing the package\n' +
-  '- You are not using Expo Go\n';
-
-const GizwitsPadSdk = NativeModules.GizwitsPadSdk
-  ? NativeModules.GizwitsPadSdk
-  : new Proxy(
-      {},
-      {
-        get() {
-          throw new Error(LINKING_ERROR);
-        },
-      }
-    );
-
-export function multiply(a: number, b: number): Promise<number> {
-  return GizwitsPadSdk.multiply(a, b);
+class GizwitsPadSdkClass extends Base {
+  async getHomeSensorData(): Promise<GizResult<any, any>> {
+    return this.callbackWapper((callback: GizCallback<any, any>) => {
+      NativeModules.GizwitsPadSdk.getHomeSensorData(
+        {  },
+        callback
+      )
+    })
+  }
 }
+
+
+const GizwitsPadSdk = new GizwitsPadSdkClass();
+export {GizwitsPadSdk}
