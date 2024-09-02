@@ -51,14 +51,14 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kylewang4929/react-native-gizwits-pad-sdk.git"
+    "url": "git+https://github.com/gizwits/react-native-gizwits-pad-sdk.git"
   },
-  "author": "王锐彬 <492960423@qq.com> (https://github.com/kylewang4929)",
+  "author": "rbwang <rbwang@gizwits.com> (https://github.com/gizwits)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/kylewang4929/react-native-gizwits-pad-sdk/issues"
+    "url": "https://github.com/gizwits/react-native-gizwits-pad-sdk/issues"
   },
-  "homepage": "https://github.com/kylewang4929/react-native-gizwits-pad-sdk#readme",
+  "homepage": "https://github.com/gizwits/react-native-gizwits-pad-sdk#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
