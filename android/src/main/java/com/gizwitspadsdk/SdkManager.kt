@@ -13,7 +13,7 @@ public object SdkManager {
     lateinit var mgr: AispeechManager;
     public fun initSdk(context: Context) {
         mgr = getSystemService(context, AispeechManager::class.java) as AispeechManager
-        mgr.set485PortMessageListener(115200, object : IAISStatusCallback.Stub() {
+        mgr.set485PortMessageListener(9600, object : IAISStatusCallback.Stub() {
             @Throws(RemoteException::class)
             override fun getStatus(s: String) {
                 println("485receive: 收到数据----$s")
@@ -43,8 +43,8 @@ public object SdkManager {
     public fun get485Port(index: Int): Boolean {
         return mgr.get485Port(index.toString())
     }
-    public fun send485PortMessage(data: String, index: Int, isHex: Boolean) {
-        mgr.send485PortMessage(index.toString(), index, isHex)
+    public fun send485PortMessage(data: String, isHex: Boolean) {
+        mgr.send485PortMessage(data, 9600, isHex)
     }
     public fun stop485Port() {
         mgr.stop485Port()

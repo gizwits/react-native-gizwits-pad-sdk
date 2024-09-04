@@ -76,10 +76,10 @@ class GizwitsPadSdkClass extends Base {
       )
     })
   }
-  public async send485PortMessage(data: string, index: number, isHex: boolean): Promise<GizResult<any, any>> {
+  public async send485PortMessage(data: string, isHex: boolean): Promise<GizResult<any, any>> {
     return this.callbackWapper((callback: GizCallback<any, any>) => {
       NativeModules.GizwitsPadSdk.send485PortMessage(
-        { index,data,isHex },
+        { data,isHex },
         callback
       )
     })
@@ -96,3 +96,5 @@ class GizwitsPadSdkClass extends Base {
 
 const GizwitsPadSdk = new GizwitsPadSdkClass();
 export default GizwitsPadSdk;
+
+export type {DeviceDataRes}
