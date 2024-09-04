@@ -1,3 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
           package="com.gizwitspadsdk">
+    <uses-permission android:name="android.permission.SERIAL_PORT" />
+
 </manifest>
