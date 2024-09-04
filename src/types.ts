@@ -23,3 +23,9 @@ export interface GizConfigStruct {
   productInfos: ProductInfoStruct[]
   serverInfo?: ServerInfoStruct
 }
+
+
+export interface DeviceDataRes {
+  data: string
+}
+export type DeviceDataCallback = (data: DeviceDataRes) => void
