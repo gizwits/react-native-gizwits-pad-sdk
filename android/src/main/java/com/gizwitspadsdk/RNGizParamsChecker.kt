@@ -5,7 +5,6 @@ import com.facebook.react.bridge.Callback
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.ReadableNativeMap
 import com.gizwits.reactnativegizwitssdkv5.GizRNCallbackManager
-import com.zhongguang.pad.sdk.GizException
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 

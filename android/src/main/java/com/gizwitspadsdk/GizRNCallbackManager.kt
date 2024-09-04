@@ -4,7 +4,6 @@ import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Callback
 import com.facebook.react.bridge.WritableArray
 import com.facebook.react.bridge.WritableMap
-import com.zhongguang.pad.sdk.GizException
 
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
