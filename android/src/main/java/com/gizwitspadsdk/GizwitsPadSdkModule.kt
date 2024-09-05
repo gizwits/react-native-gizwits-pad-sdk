@@ -46,8 +46,6 @@ data class GizGet485PortParams(
   val index: Int,
 )
 data class GizSend485PortMessageParams(
-  @SerializedName("index")
-  val index: Int,
   @SerializedName("data")
   val data: String,
   @SerializedName("isHex")
@@ -112,7 +110,7 @@ class GizwitsPadSdkModule(reactContext: ReactApplicationContext) : ReactContextB
   fun send485PortMessage(options: ReadableMap, result: Callback) {
     var config = RNGizParamsChecker.check(options, result, GizSend485PortMessageParams::class.java)
     config?.let {
-      sdkHandler.send485PortMessage(config.data, config.index, config.isHex);
+      sdkHandler.send485PortMessage(config.data, config.isHex);
       GizRNCallbackManager.callbackWithResult(callback = result, result = Result.success(Unit))
     }
   }
