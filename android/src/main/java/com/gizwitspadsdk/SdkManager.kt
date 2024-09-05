@@ -4,6 +4,8 @@ import android.app.IAISStatusCallback
 import android.content.Context
 import android.os.RemoteException
 import androidx.core.content.ContextCompat.getSystemService
+import com.gizwitspadsdk.GizException
+
 
 public interface MessageListener {
     fun onMessageReceived(message: String)
