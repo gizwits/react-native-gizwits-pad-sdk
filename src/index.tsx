@@ -6,25 +6,29 @@ const eventEmitter = new NativeEventEmitter(NativeModules.RNGizSDKManagerModule)
 
 
 class GizwitsPadSdkClass extends Base {
-  deviceDataCallbacks: DeviceDataCallback[] = []
+  deviceDataCallbacks?: DeviceDataCallback
 
   constructor() {
     super()
+    // eventEmitter.removeAllListeners('DeviceDataListener')
     eventEmitter.addListener('DeviceDataListener', this.deviceDataCallback)
   }
 
   deviceDataCallback = (data: DeviceDataRes) => {
-    this.deviceDataCallbacks.map((item) => {
-      item(data)
-    })
+    // console.log('deviceDataCallback', data)
+    this.deviceDataCallbacks && this.deviceDataCallbacks(data)
+    // this.deviceDataCallbacks.map((item) => {
+    //   item(data)
+    // })
   }
 
-  removeDeviceDataListener(callback: DeviceDataCallback) {
-    this.deleteCallBack(this.deviceDataCallbacks, callback)
+  removeDeviceDataListener(_: DeviceDataCallback) {
+    // this.deleteCallBack(this.deviceDataCallbacks, callback)
+    this.deviceDataCallbacks = undefined;
   }
 
   addDeviceDataListener(callback: DeviceDataCallback) {
-    this.deviceDataCallbacks.push(callback)
+    this.deviceDataCallbacks= callback
   }
   public async setLedStatus(status: boolean): Promise<GizResult<any, any>> {
     return this.callbackWapper((callback: GizCallback<any, any>) => {

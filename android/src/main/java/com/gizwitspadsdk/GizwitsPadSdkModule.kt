@@ -63,10 +63,12 @@ class GizwitsPadSdkModule(reactContext: ReactApplicationContext) : ReactContextB
   enum class EventName(val value: String) {
     DeviceDataListener("DeviceDataListener"),
   }
-  private var sdkHandler = SdkManager
+  public var sdkHandler = SdkManager
   val messageListener = object : MessageListener {
     override fun onMessageReceived(message: String) {
       var jsonData = JSONObject();
+      println("rnSDK: 收到数据----$message")
+
       jsonData.put("data", message)
       sendEvent(EventName.DeviceDataListener.name, GizRNCallbackManager.jsonObject2WriteableMap(jsonData))
 

@@ -15,6 +15,7 @@ public object SdkManager {
     lateinit var mgr: AispeechManager;
     public fun initSdk(context: Context) {
         mgr = getSystemService(context, AispeechManager::class.java) as AispeechManager
+        mgr.stop485Port()
         mgr.set485PortMessageListener(9600, object : IAISStatusCallback.Stub() {
             @Throws(RemoteException::class)
             override fun getStatus(s: String) {
@@ -25,19 +26,18 @@ public object SdkManager {
     }
 
     // 485
-    private val listeners = mutableListOf<MessageListener>()
+    private var listeners: MessageListener? = null
     public fun addMessageListener(listener: MessageListener) {
-        listeners.add(listener)
+//        listeners.add(listener)
+        listeners = listener
     }
 
-    public fun removeMessageListener(listener: MessageListener) {
-        listeners.remove(listener)
-    }
+//    public fun removeMessageListener(listener: MessageListener) {
+//        listeners.remove(listener)
+//    }
     // 模拟接收消息并通知监听器
     fun receiveMessage(message: String) {
-        for (listener in listeners) {
-            listener.onMessageReceived(message)
-        }
+        listeners!!.onMessageReceived(message)
     }
     public fun set485Port(index: Int, status: Boolean) {
         mgr.set485Port(index.toString(), status)
