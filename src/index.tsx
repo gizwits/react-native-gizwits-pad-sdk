@@ -13,7 +13,7 @@ export function isLoaded() {
   return typeof RNGizwitsPadSdkJSI.sendData === 'function';
 }
 if (!isLoaded()) {
-  const result = NativeModules.GizwitsPadSdkModule?.install();
+  const result = NativeModules.GizwitsPadSdk?.install();
   if (!result && !isLoaded()) { throw new Error('JSI bindings were not installed for: RNGizwitsRnSdk Module'); }
 
   if (!isLoaded()) {
