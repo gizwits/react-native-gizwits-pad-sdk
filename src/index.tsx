@@ -4,6 +4,22 @@ import type { GizResult, GizCallback, DeviceDataCallback, DeviceDataRes } from '
 
 const eventEmitter = new NativeEventEmitter(NativeModules.RNGizSDKManagerModule)
 
+const RNGizwitsPadSdkJSI: {
+  sendData(data:string): boolean;
+  // @ts-ignore
+} = global as any;
+
+export function isLoaded() {
+  return typeof RNGizwitsPadSdkJSI.sendData === 'function';
+}
+if (!isLoaded()) {
+  const result = NativeModules.GizwitsPadSdkModule?.install();
+  if (!result && !isLoaded()) { throw new Error('JSI bindings were not installed for: RNGizwitsRnSdk Module'); }
+
+  if (!isLoaded()) {
+    throw new Error('JSI bindings were not installed for: RNGizwitsRnSdk Module');
+  }
+}
 
 class GizwitsPadSdkClass extends Base {
   deviceDataCallbacks?: DeviceDataCallback
@@ -101,4 +117,5 @@ class GizwitsPadSdkClass extends Base {
 const GizwitsPadSdk = new GizwitsPadSdkClass();
 export default GizwitsPadSdk;
 
+export {RNGizwitsPadSdkJSI}
 export type {DeviceDataRes}
