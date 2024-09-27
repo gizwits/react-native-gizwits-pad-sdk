@@ -1,3 +1,5 @@
+import java.nio.file.Paths
+
 buildscript {
   // Buildscript is evaluated before everything else so we can't use getExtOrDefault
   def kotlin_version = rootProject.ext.has("kotlinVersion") ? rootProject.ext.get("kotlinVersion") : project.properties["GizwitsPadSdk_kotlinVersion"]
@@ -13,6 +15,40 @@ buildscript {
     classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
   }
 }
+
+def found = false
+def basePath = projectDir.toPath().normalize()
+
+// Find node_modules inside the example project
+def nodeModulesDir = Paths.get(basePath.getParent().toString(), "example/node_modules")
+def reactNativeDir = Paths.get(nodeModulesDir.toString(), "react-native/android")
+if (nodeModulesDir.toFile().exists() && reactNativeDir.toFile().exists()) {
+  found = true
+}
+
+if(!found){
+  // Node's module resolution algorithm searches up to the root directory,
+  // after which the base path will be null
+  while (basePath) {
+    nodeModulesDir = Paths.get(basePath.toString(), "node_modules")
+    reactNativeDir = Paths.get(nodeModulesDir.toString(), "react-native/android")
+    if (nodeModulesDir.toFile().exists() && reactNativeDir.toFile().exists()) {
+      found = true
+      break;
+    }
+    basePath = basePath.getParent()
+  }
+}
+
+if(!found) {
+  throw new GradleException(
+    "${project.name}: unable to locate React Native android sources. " +
+      "Ensure you have you installed React Native as a dependency in your project and try again.")
+}
+
+def nodeModulesPath = nodeModulesDir.toString().replace("\\", "/")
+def reactNativePath = reactNativeDir.toString().replace("\\", "/")
+
 
 def reactNativeArchitectures() {
   def value = rootProject.getProperties().get("reactNativeArchitectures")
@@ -58,12 +94,33 @@ android {
     }
   }
 
+  externalNativeBuild {
+    cmake {
+      path "./CMakeLists.txt"
+    }
+  }
+
+  packagingOptions {
+    excludes = ["**/libc++_shared.so","**/libjsi.so","**/libreactnativejni.so","META-INF/MANIFEST.MF"]
+  }
+
+  configurations {
+    extractJNI
+  }
+
   compileSdkVersion getExtOrIntegerDefault("compileSdkVersion")
 
   defaultConfig {
     minSdkVersion getExtOrIntegerDefault("minSdkVersion")
     targetSdkVersion getExtOrIntegerDefault("targetSdkVersion")
-
+    externalNativeBuild {
+      cmake {
+        cppFlags "-fexceptions", "-frtti", "-std=c++1y", "-DONANDROID"
+        abiFilters 'x86', 'x86_64', 'armeabi-v7a', 'arm64-v8a'
+        arguments '-DANDROID_STL=c++_shared', "-DNODE_MODULES_DIR=${nodeModulesPath}", "-DREACT_NATIVE_JNI_LIB=${nodeModulesPath}/react-native/ReactAndroid/src/main/jni"
+        
+      }
+    }
   }
 
   buildTypes {
@@ -100,5 +157,8 @@ dependencies {
 
   // implementation project(':sdk')
   compileOnly(files("libs/aispeech.jar"))
+
+  // def rnAAR = fileTree(reactNativePath).matching({ it.include "**/**/*.aar" }).singleFile
+  // extractJNI(files(rnAAR))
 }
 

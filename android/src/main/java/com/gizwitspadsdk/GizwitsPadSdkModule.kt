@@ -1,7 +1,7 @@
 package com.gizwitspadsdk
 
-import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.Callback
+import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
@@ -56,6 +56,7 @@ data class GizSend485PortMessageParams(
 class GizwitsPadSdkModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
 
   private var mReactContext: ReactContext? = null
+  var isInit = false
 
   override fun getName(): String {
     return NAME
@@ -63,17 +64,52 @@ class GizwitsPadSdkModule(reactContext: ReactApplicationContext) : ReactContextB
   enum class EventName(val value: String) {
     DeviceDataListener("DeviceDataListener"),
   }
+
+  @ReactMethod(isBlockingSynchronousMethod = true)
+  fun install(): Boolean {
+    try {
+      System.loadLibrary("gizwitsjsi") // 确保这里的名称与 CMake 构建的库名称一致
+
+      val context = reactApplicationContext
+      nativeInstall(
+        context.javaScriptContextHolder!!.get(),
+        context.filesDir.absolutePath
+      )
+      isInit = true
+      return true
+    } catch (exception: Exception) {
+      return false
+    }
+  }
+  fun getVersion_c(): String {
+    return "version"
+  }
+  fun sendData_c(data: String): Boolean {
+    println("sendData_csendData_csendData_c")
+    sdkHandler.send485PortMessage(data, true)
+    return true
+  }
+
+
   public var sdkHandler = SdkManager
   val messageListener = object : MessageListener {
     override fun onMessageReceived(message: String) {
-      var jsonData = JSONObject();
       println("rnSDK: 收到数据----$message")
+//      if (isInit){
+//        mReactContext!!.getJavaScriptContextHolder()
+//          ?.let { emitJSI(it.get(), "DeviceDataListener", message) };
+//      }
+
+      var jsonData = JSONObject();
 
       jsonData.put("data", message)
       sendEvent(EventName.DeviceDataListener.name, GizRNCallbackManager.jsonObject2WriteableMap(jsonData))
 
     }
   }
+
+  private external fun nativeInstall(jsiPtr: Long, docDir: String)
+  private external fun emitJSI(jsiPtr: Long, name: String, data: String)
 
   fun sendEvent(name:String, data: WritableArray?) {
     mReactContext!!
