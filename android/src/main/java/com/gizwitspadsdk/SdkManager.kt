@@ -113,11 +113,16 @@ public object SdkManager {
         return mgr.get485Port(index.toString())
     }
     public fun send485PortMessage(data: String, isHex: Boolean) {
-        mgr.set485Port("1", true)
-        Thread.sleep(50)
-        mgr.send485PortMessage(data, 9600, isHex)
-        Thread.sleep(50)
-        mgr.set485Port("1", false)
+        Thread {
+            // 在新线程中运行的代码
+            println("send485PortMessage run")
+            mgr.set485Port("1", true)
+            Thread.sleep(20)
+            mgr.send485PortMessage(data, 9600, isHex)
+            Thread.sleep(20)
+
+            mgr.set485Port("1", false)
+        }.start()
     }
     public fun stop485Port() {
         mgr.stop485Port()
