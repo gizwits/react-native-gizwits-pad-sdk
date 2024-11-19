@@ -1,6 +1,7 @@
 package com.gizwitspadsdk
 
 import com.facebook.react.bridge.Callback
+import com.facebook.react.bridge.LifecycleEventListener
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -11,11 +12,23 @@ import com.facebook.react.bridge.WritableMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.gizwits.reactnativegizwitssdkv5.GizRNCallbackManager
 import com.google.gson.annotations.SerializedName
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 
+data class NumberStringPair(
+  @SerializedName("index")
+  val index: Int,
+  @SerializedName("text")
+  val text: String
+)
 data class GizSetLedStatusParams(
   @SerializedName("status")
   val status: Boolean,
+)
+data class  UpdateModbusDataParams(
+  @SerializedName("data")
+  var data: List<NumberStringPair>
 )
 data class GizSetRelayParams(
   @SerializedName("status")
@@ -53,7 +66,8 @@ data class GizSend485PortMessageParams(
 )
 
 
-class GizwitsPadSdkModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
+class GizwitsPadSdkModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext),
+  LifecycleEventListener {
 
   private var mReactContext: ReactContext? = null
   var isInit = false
@@ -63,6 +77,18 @@ class GizwitsPadSdkModule(reactContext: ReactApplicationContext) : ReactContextB
   }
   enum class EventName(val value: String) {
     DeviceDataListener("DeviceDataListener"),
+  }
+
+  override fun onHostResume() {
+    TODO("Not yet implemented")
+  }
+
+  override fun onHostPause() {
+    TODO("Not yet implemented")
+  }
+
+  override fun onHostDestroy() {
+    sdkHandler.stop485Port()
   }
 
   @ReactMethod(isBlockingSynchronousMethod = true)
@@ -94,7 +120,6 @@ class GizwitsPadSdkModule(reactContext: ReactApplicationContext) : ReactContextB
   public var sdkHandler = SdkManager
   val messageListener = object : MessageListener {
     override fun onMessageReceived(message: String) {
-      println("rnSDK: 收到数据----$message")
 //      if (isInit){
 //        mReactContext!!.getJavaScriptContextHolder()
 //          ?.let { emitJSI(it.get(), "DeviceDataListener", message) };
@@ -124,10 +149,14 @@ class GizwitsPadSdkModule(reactContext: ReactApplicationContext) : ReactContextB
 
   init {
     mReactContext = reactContext
-    sdkHandler.initSdk(reactContext)
-    sdkHandler.addMessageListener(messageListener)
-  }
 
+  }
+  @ReactMethod
+  fun initSdk(options: ReadableMap, result: Callback) {
+    sdkHandler.addMessageListener(messageListener)
+    mReactContext?.let { sdkHandler.initSdk(it) }
+    GizRNCallbackManager.callbackWithResult(callback = result, result = Result.success(Unit))
+  }
   @ReactMethod
   fun set485Port(options: ReadableMap, result: Callback) {
     var config = RNGizParamsChecker.check(options, result, GizSet485PortParams::class.java)
@@ -158,6 +187,16 @@ class GizwitsPadSdkModule(reactContext: ReactApplicationContext) : ReactContextB
     GizRNCallbackManager.callbackWithResult(callback = result, result = Result.success(Unit))
   }
 
+  @ReactMethod
+  fun updateModbusData(options: ReadableMap, result: Callback) {
+    var config = RNGizParamsChecker.check(options, result, UpdateModbusDataParams::class.java)
+    config?.let {
+      GlobalScope.launch {
+        sdkHandler.updateModbusData(config.data);
+      }
+      GizRNCallbackManager.callbackWithResult(callback = result, result = Result.success(Unit))
+    }
+  }
 
   @ReactMethod
   fun setRelay(options: ReadableMap, result: Callback) {
