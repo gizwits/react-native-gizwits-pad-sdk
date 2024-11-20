@@ -71,6 +71,24 @@ class GizwitsPadSdkClass extends Base {
     })
   }
 
+  public async initSdk(): Promise<GizResult<any, any>> {
+    return this.callbackWapper((callback: GizCallback<any, any>) => {
+      NativeModules.GizwitsPadSdk.initSdk(
+        {  },
+        callback
+      )
+    })
+  }
+  public async updateModbusData(data: {index: number, text: string}[]): Promise<GizResult<any, any>> {
+    return this.callbackWapper((callback: GizCallback<any, any>) => {
+      NativeModules.GizwitsPadSdk.updateModbusData(
+        { data },
+        callback
+      )
+    })
+  }
+  
+
   public async getRelay(index: number): Promise<GizResult<any, any>> {
     return this.callbackWapper((callback: GizCallback<any, any>) => {
       NativeModules.GizwitsPadSdk.getRelay(
