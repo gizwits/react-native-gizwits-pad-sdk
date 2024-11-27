@@ -78,7 +78,8 @@ public object SdkManager {
     ): Boolean {
         // 确保address和replacement的长度合法
         if (address < 0 || address + replacement.length > modbusData.length) {
-            throw IndexOutOfBoundsException("Address out of bounds or replacement string too long.")
+            // throw IndexOutOfBoundsException("Address out of bounds or replacement string too long.")
+            return false
         }
 
         val chunks = replacement.chunked(4)
@@ -156,7 +157,8 @@ public object SdkManager {
         val start = address * 4
         val end = start + len * 4
         if (start < 0 || len < 0 || end > modbusData.length) {
-            throw IndexOutOfBoundsException("Invalid address or length.")
+            return ""
+            // throw IndexOutOfBoundsException("Invalid address or length.")
         }
         // 返回从 address 开始，长度为 len 的子字符串
 
