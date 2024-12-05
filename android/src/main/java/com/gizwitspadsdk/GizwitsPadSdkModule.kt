@@ -111,7 +111,6 @@ class GizwitsPadSdkModule(reactContext: ReactApplicationContext) : ReactContextB
     return "version"
   }
   fun sendData_c(data: String): Boolean {
-    println("sendData_csendData_csendData_c")
     sdkHandler.send485PortMessage(data, true)
     return true
   }

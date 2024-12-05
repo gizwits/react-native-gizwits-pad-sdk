@@ -95,7 +95,7 @@ public object SdkManager {
                 modbusData.replace(currentAddress, currentAddress + chunk.length, chunk)
                 hasUpdate = true
             } else {
-                println("忽略更新 ${currentAddress} 的数据")
+                // println("忽略更新 ${currentAddress} 的数据")
             }
         }
         return hasUpdate;
@@ -205,30 +205,31 @@ public object SdkManager {
                         val hasUpdate = replaceStringAtAddress(address, modebusData)
                         if (hasUpdate) {
                             receiveMessage(cacheString)
-                            println("设备上报数据 原始数据： ${cacheString}")
-                            println("设备上报数据 地址： ${address} ${modebusData}")
+                            // println("设备上报数据 原始数据： ${cacheString}")
+                            // println("设备上报数据 地址： ${address} ${modebusData}")
                         }
                         send485PortMessage(rawData, true)
 //                        println("设备上报数据 回复 ${rawData}")
 
                     }
                     if (functionCode.equals("03")) {
-                        receiveMessage(cacheString)
+                        // 不需要上报，本地处理
+                        // receiveMessage(cacheString)
                         // 如果当前上电状态是1 先不回复
                         val powerUp = getBitInHexString(7,0)
                         if (powerUp == 1) {
-                            println("当前处于上电状态，先不回复")
+                            // println("当前处于上电状态，先不回复")
                             return;
                         }
 
                         val len = cacheString.substring(8, 12).toInt(16)
-                        println("设备查询数据: $cacheString, len: ${len} address: ${address}")
+                        // println("设备查询数据: $cacheString, len: ${len} address: ${address}")
                         var hexString = getSubstringFromAddress(address, len)
                         hexString = "8003${(len * 2).toHexString().padStart(2, '0')}${hexString}"
 //
                         hexString = "${hexString}${calculateCRC(hexString)}"
 
-                        println("设备查询数据 回复: $hexString")
+                        // println("设备查询数据 回复: $hexString")
 
                         send485PortMessage(hexString, true)
 
@@ -269,7 +270,7 @@ public object SdkManager {
     public suspend fun updateModbusData(data: List<NumberStringPair>) {
         // 替换数据
         data.map {
-            println("updateModbusData ${it.index} ${it.text}")
+            // println("updateModbusData ${it.index} ${it.text}")
             mutex.withLock { // 确保线程安全
                 replaceStringAtAddress(it.index, it.text, true)
                 // 仅在 readySendCmdIndex 中添加唯一的索引
@@ -282,8 +283,8 @@ public object SdkManager {
     }
     public fun send485PortMessage(data: String, isHex: Boolean) {
 
-        println("send485PortMessage run")
-        Thread.sleep(40)
+        // println("send485PortMessage run")
+        Thread.sleep(10)
         try {
             // 调用服务的代码
             mgr.send485PortMessage(data, 9600, isHex)
