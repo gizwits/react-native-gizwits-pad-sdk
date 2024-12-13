@@ -284,7 +284,7 @@ public object SdkManager {
     public fun send485PortMessage(data: String, isHex: Boolean) {
 
         // println("send485PortMessage run")
-        Thread.sleep(10)
+        Thread.sleep(30)
         try {
             // 调用服务的代码
             mgr.send485PortMessage(data, 9600, isHex)
