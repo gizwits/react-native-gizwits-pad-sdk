@@ -3,7 +3,6 @@ import java.nio.file.Paths
 buildscript {
   // Buildscript is evaluated before everything else so we can't use getExtOrDefault
   def kotlin_version = rootProject.ext.has("kotlinVersion") ? rootProject.ext.get("kotlinVersion") : project.properties["GizwitsPadSdk_kotlinVersion"]
-
   repositories {
     maven { url 'https://jitpack.io' }
     jcenter()
@@ -148,6 +147,7 @@ android {
 }
 
 repositories {
+  google()
   mavenCentral()
   jcenter()
   maven {
@@ -159,6 +159,7 @@ repositories {
 }
 
 def kotlin_version = getExtOrDefault("kotlinVersion")
+def retrofit_version = '2.9.0'
 
 dependencies {
   // For < 0.71, this will be from the local maven repo
@@ -167,6 +168,10 @@ dependencies {
   implementation "com.facebook.react:react-native:+"
   implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
   implementation "com.google.code.gson:gson:2.9.1"
+  implementation 'io.github.java-native:jssc:2.9.6'
+  implementation "com.squareup.retrofit2:retrofit:$retrofit_version"
+  implementation "com.squareup.retrofit2:converter-gson:$retrofit_version"
+  implementation "com.squareup.retrofit2:converter-scalars:$retrofit_version"
   compileOnly(files("libs/aispeech.jar"))
   // def rnAAR = fileTree(reactNativePath).matching({ it.include "**/**/*.aar" }).singleFile
   // extractJNI(files(rnAAR))

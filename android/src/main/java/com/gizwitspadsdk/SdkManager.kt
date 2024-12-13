@@ -1,15 +1,20 @@
 package com.gizwitspadsdk
+import android.annotation.SuppressLint
 import android.app.AispeechManager
 import android.app.IAISStatusCallback
 import android.content.Context
 import android.os.DeadObjectException
 import android.os.RemoteException
+import android.provider.Settings
 import androidx.core.content.ContextCompat.getSystemService
+import com.facebook.react.bridge.Promise
+import com.outes.wuheng.SerialPortManager
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import okhttp3.internal.toHexString
 import kotlinx.coroutines.sync.withLock
+import okio.Utf8
 
 
 public interface MessageListener {
@@ -17,11 +22,13 @@ public interface MessageListener {
 }
 
 public object SdkManager {
-    lateinit var mgr: AispeechManager;
+//    lateinit var mgr: AispeechManager;
+    private lateinit var serialPortManager: SerialPortManager
     var readySendCmdIndex: MutableList<Int> = mutableListOf()
     var cacheString = ""
-    private val mutex = Mutex() 
+    private val mutex = Mutex()
     var modbusData = StringBuilder(0)
+    var androidId = ""
     fun createInitModbusData () {
         val length = 70000 * 4
         val stringBuilder = StringBuilder(length)
@@ -174,76 +181,87 @@ public object SdkManager {
         setBitInHexString(7, 0, 1)
     }
 
-    public fun initSdk(context: Context) {
-        createInitModbusData();
-        mgr = getSystemService(context, AispeechManager::class.java) as AispeechManager
+    fun handlePortData(s: String) {
+        println("handlePortData: ${s}")
+        var isEnd = false
 
-        mgr.set485PortMessageListener(9600, object : IAISStatusCallback.Stub() {
-            @Throws(RemoteException::class)
-            override fun getStatus(s: String) {
-                var isEnd = false
+        if (s.substring(0, 2).equals("80")) {
+            cacheString = s
+            isEnd = checkIsEnd(cacheString)
+        }else {
+            cacheString += s
+            isEnd = checkIsEnd(cacheString)
+        }
 
-                if (s.substring(0, 2).equals("80")) {
-                    cacheString = s
-                    isEnd = checkIsEnd(cacheString)
-                }else {
-                    cacheString += s
-                    isEnd = checkIsEnd(cacheString)
+        if (isEnd) {
+            val functionCode = cacheString.substring(2, 4)
+            val address = cacheString.substring(4, 8).toInt(16)
+
+            if (functionCode.equals("10")) {
+                val hexString = cacheString.substring(0,12)
+                val modebusData = cacheString.substring(14, cacheString.length)
+
+                val crc = calculateCRC(hexString)
+                val rawData = hexString + crc
+                // 替换本地缓存
+                val hasUpdate = replaceStringAtAddress(address, modebusData)
+                if (hasUpdate) {
+                    receiveMessage(cacheString)
+                    // println("设备上报数据 原始数据： ${cacheString}")
+                    // println("设备上报数据 地址： ${address} ${modebusData}")
                 }
-
-                if (isEnd) {
-                    val functionCode = cacheString.substring(2, 4)
-                    val address = cacheString.substring(4, 8).toInt(16)
-
-                    if (functionCode.equals("10")) {
-                        val hexString = cacheString.substring(0,12)
-                        val modebusData = cacheString.substring(14, cacheString.length)
-
-                        val crc = calculateCRC(hexString)
-                        val rawData = hexString + crc
-                        // 替换本地缓存
-                        val hasUpdate = replaceStringAtAddress(address, modebusData)
-                        if (hasUpdate) {
-                            receiveMessage(cacheString)
-                            // println("设备上报数据 原始数据： ${cacheString}")
-                            // println("设备上报数据 地址： ${address} ${modebusData}")
-                        }
-                        send485PortMessage(rawData, true)
+                send485PortMessage(rawData, true)
 //                        println("设备上报数据 回复 ${rawData}")
 
-                    }
-                    if (functionCode.equals("03")) {
-                        // 不需要上报，本地处理
-                        // receiveMessage(cacheString)
-                        // 如果当前上电状态是1 先不回复
-                        val powerUp = getBitInHexString(7,0)
-                        if (powerUp == 1) {
-                            // println("当前处于上电状态，先不回复")
-                            return;
-                        }
+            }
+            if (functionCode.equals("03")) {
+                // 不需要上报，本地处理
+                // receiveMessage(cacheString)
+                // 如果当前上电状态是1 先不回复
+                val powerUp = getBitInHexString(7,0)
+                if (powerUp == 1) {
+                    // println("当前处于上电状态，先不回复")
+                    return;
+                }
 
-                        val len = cacheString.substring(8, 12).toInt(16)
-                        // println("设备查询数据: $cacheString, len: ${len} address: ${address}")
-                        var hexString = getSubstringFromAddress(address, len)
-                        hexString = "8003${(len * 2).toHexString().padStart(2, '0')}${hexString}"
+                val len = cacheString.substring(8, 12).toInt(16)
+                // println("设备查询数据: $cacheString, len: ${len} address: ${address}")
+                var hexString = getSubstringFromAddress(address, len)
+                hexString = "8003${(len * 2).toHexString().padStart(2, '0')}${hexString}"
 //
-                        hexString = "${hexString}${calculateCRC(hexString)}"
+                hexString = "${hexString}${calculateCRC(hexString)}"
 
-                        // println("设备查询数据 回复: $hexString")
+                // println("设备查询数据 回复: $hexString")
 
-                        send485PortMessage(hexString, true)
+                send485PortMessage(hexString, true)
 
-                        // 中控读走了 address 开始 len 长度的数据
-                        // 把 address 到 len的index 删除
-                        GlobalScope.launch {
-                            removeReadySendCmdIndex(address, address + len)
-                        }
-                    }
-
-                    cacheString = "";
+                // 中控读走了 address 开始 len 长度的数据
+                // 把 address 到 len的index 删除
+                GlobalScope.launch {
+                    removeReadySendCmdIndex(address, address + len)
                 }
             }
-        })
+
+            cacheString = "";
+        }
+    }
+
+    @SuppressLint("HardwareIds")
+    fun getAndroidId(context: Context): String {
+        return Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+    }
+    public fun initSdk(context: Context) {
+        createInitModbusData();
+        androidId = getAndroidId(context)
+        initSerial();
+//        mgr = getSystemService(context, AispeechManager::class.java) as AispeechManager
+//
+//        mgr.set485PortMessageListener(9600, object : IAISStatusCallback.Stub() {
+//            @Throws(RemoteException::class)
+//            override fun getStatus(s: String) {
+//                handlePortData(s)
+//            }
+//        })
 
     }
 
@@ -284,27 +302,20 @@ public object SdkManager {
     public fun send485PortMessage(data: String, isHex: Boolean) {
 
         // println("send485PortMessage run")
-        Thread.sleep(30)
+//        Thread.sleep(30)
         try {
             // 调用服务的代码
-            mgr.send485PortMessage(data, 9600, isHex)
+//            mgr.send485PortMessage(data, 9600, isHex)
+            serialPortManager.sendData(data.hexStringToByteArray())
         } catch (e: DeadObjectException) {
             // 记录异常日志
             println("SdkManager DeadObjectException: Service might be down")
             // 尝试恢复或重新连接逻辑
         }
-//        Thread.sleep(20)
 
-//        Thread {
-//            // 在新线程中运行的代码
-//            println("send485PortMessage run")
-//            Thread.sleep(20)
-//            mgr.send485PortMessage(data, 9600, isHex)
-//            Thread.sleep(20)
-//        }.start()
     }
     public fun stop485Port() {
-//        mgr.stop485Port()
+        serialPortManager.closePort()
     }
 
     // 485
@@ -335,4 +346,30 @@ public object SdkManager {
     public fun factoryReset() {
 //        mgr.factoryReset()
     }
+
+    fun initSerial() {
+        serialPortManager = SerialPortManager("/dev/ttyS6")
+
+        if (serialPortManager.openPort()) {
+            serialPortManager.setListener { data ->
+                // 处理接收到的数据
+
+                handlePortData(data.toHexString())
+            }
+            serialPortManager.startReading()
+        } else {
+        }
+    }
+}
+
+fun ByteArray.toHexString(): String {
+    return joinToString("") { String.format("%02x", it) }.toUpperCase()
+}
+fun String.hexStringToByteArray(): ByteArray {
+    val len = this.length
+    val data = ByteArray(len / 2)
+    for (i in 0 until len step 2) {
+        data[i / 2] = ((Character.digit(this[i], 16) shl 4) + Character.digit(this[i + 1], 16)).toByte()
+    }
+    return data
 }
