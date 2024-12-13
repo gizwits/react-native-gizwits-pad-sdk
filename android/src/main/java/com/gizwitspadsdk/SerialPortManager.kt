@@ -14,7 +14,7 @@ class SerialPortManager(private val portName: String) {
         this.listener = listener
     }
 
-    fun openPort(): Boolean {
+    suspend fun openPort(): Boolean {
         return try {
             serialPort.openPort()
             serialPort.setParams(SerialPort.BAUDRATE_9600, // 设置波特率
@@ -24,6 +24,7 @@ class SerialPortManager(private val portName: String) {
             true
         } catch (e: SerialPortException) {
             e.printStackTrace()
+            reconnect()
             val extraData = mapOf(
                 "errorMessage" to e.toString(),
                 "event" to "open port error"
