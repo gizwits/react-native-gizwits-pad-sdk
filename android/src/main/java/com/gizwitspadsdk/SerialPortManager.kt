@@ -4,6 +4,8 @@ import com.gizwitspadsdk.sendSentryError
 import jssc.SerialPort
 import jssc.SerialPortException
 import kotlinx.coroutines.*
+import kotlinx.coroutines.GlobalScope
+
 
 class SerialPortManager(private val portName: String) {
     private val serialPort = SerialPort(portName)
@@ -14,7 +16,7 @@ class SerialPortManager(private val portName: String) {
         this.listener = listener
     }
 
-    suspend fun openPort(): Boolean {
+    fun openPort(): Boolean {
         return try {
             serialPort.openPort()
             serialPort.setParams(SerialPort.BAUDRATE_9600, // 设置波特率
@@ -24,7 +26,9 @@ class SerialPortManager(private val portName: String) {
             true
         } catch (e: SerialPortException) {
             e.printStackTrace()
-            reconnect()
+            GlobalScope.launch {
+                reconnect()
+            }
             val extraData = mapOf(
                 "errorMessage" to e.toString(),
                 "event" to "open port error"
