@@ -182,15 +182,38 @@ public object SdkManager {
     }
 
     fun handlePortData(s: String) {
-        println("handlePortData: ${s}")
         var isEnd = false
+
+        // 检查接收到的数据长度
+        if (s.length < 2) {
+            println("接收到的数据长度不足，忽略该数据")
+            val extraData = mapOf(
+                "event" to "len error",
+                "data" to cacheString
+            )
+            sendSentryError(Error("长度错误"), extraData)
+            return // 忽略数据
+        }
 
         if (s.substring(0, 2).equals("80")) {
             cacheString = s
             isEnd = checkIsEnd(cacheString)
-        }else {
+        } else {
             cacheString += s
             isEnd = checkIsEnd(cacheString)
+        }
+
+        // 检查缓存数据的长度
+        if (cacheString.length < 12) { // 根据需要设置最小长度
+            val message = "缓存数据长度不足，当前长度: ${cacheString.length}，忽略该数据"
+            println(message)
+            val extraData = mapOf(
+                "errorMessage" to message,
+                "event" to "len error",
+                "data" to cacheString
+            )
+            sendSentryError(Error("长度错误"), extraData)
+            return // 忽略数据
         }
 
         if (isEnd) {
@@ -198,7 +221,7 @@ public object SdkManager {
             val address = cacheString.substring(4, 8).toInt(16)
 
             if (functionCode.equals("10")) {
-                val hexString = cacheString.substring(0,12)
+                val hexString = cacheString.substring(0, 12)
                 val modebusData = cacheString.substring(14, cacheString.length)
 
                 val crc = calculateCRC(hexString)
@@ -208,30 +231,31 @@ public object SdkManager {
                 if (hasUpdate) {
                     receiveMessage(cacheString)
                     // println("设备上报数据 原始数据： ${cacheString}")
-                    // println("设备上报数据 地址： ${address} ${modebusData}")
+                     println("设备上报数据 地址： ${address} ${modebusData}")
                 }
                 send485PortMessage(rawData, true)
-//                        println("设备上报数据 回复 ${rawData}")
+                // println("设备上报数据 回复 ${rawData}")
 
             }
             if (functionCode.equals("03")) {
                 // 不需要上报，本地处理
                 // receiveMessage(cacheString)
                 // 如果当前上电状态是1 先不回复
-                val powerUp = getBitInHexString(7,0)
+                val powerUp = getBitInHexString(7, 0)
                 if (powerUp == 1) {
-                    // println("当前处于上电状态，先不回复")
-                    return;
+                     println("当前处于上电状态，先不回复")
+                    return
                 }
 
                 val len = cacheString.substring(8, 12).toInt(16)
                 // println("设备查询数据: $cacheString, len: ${len} address: ${address}")
                 var hexString = getSubstringFromAddress(address, len)
+                println("设备查询数据 len: ${len} address: ${address}, 回复: $hexString")
+
                 hexString = "8003${(len * 2).toHexString().padStart(2, '0')}${hexString}"
-//
+
                 hexString = "${hexString}${calculateCRC(hexString)}"
 
-                // println("设备查询数据 回复: $hexString")
 
                 send485PortMessage(hexString, true)
 
@@ -242,7 +266,7 @@ public object SdkManager {
                 }
             }
 
-            cacheString = "";
+            cacheString = ""
         }
     }
 
