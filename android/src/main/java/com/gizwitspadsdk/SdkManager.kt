@@ -143,6 +143,7 @@ public object SdkManager {
     }
 
     fun checkIsEnd (s:String):Boolean {
+        if (s.length < 4) return false
         val functionCode = s.substring(2,4);
         var isEnd = false;
         if (functionCode == "03") {
