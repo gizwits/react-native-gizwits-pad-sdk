@@ -26,7 +26,6 @@ public interface MessageListener {
 
 public object SdkManager {
 //    lateinit var mgr: AispeechManager;
-    private lateinit var serialPortManager: SerialPortManager
     var readySendCmdIndex: MutableList<Int> = mutableListOf()
     var cacheString = ""
     private val mutex = Mutex()
@@ -282,14 +281,17 @@ public object SdkManager {
     public fun initSdk(context: Context) {
         createInitModbusData();
         androidId = getAndroidId(context)
-        initSerial();
+
+        GlobalScope.launch {
+            initSerial();
+        }
 
 
         // 测试串口重连
 //        CoroutineScope(Dispatchers.Main).launch {
 //            while (true) {
 //                // 执行您的任务
-//                serialPortManager.closePort()
+//                SerialPortManager.closePort()
 //
 //                delay(30 * 1000)
 //            }
@@ -346,7 +348,7 @@ public object SdkManager {
         try {
             // 调用服务的代码
 //            mgr.send485PortMessage(data, 9600, isHex)
-            serialPortManager.sendData(data.hexStringToByteArray())
+            SerialPortManager.sendData(data.hexStringToByteArray())
         } catch (e: DeadObjectException) {
             // 记录异常日志
             println("SdkManager DeadObjectException: Service might be down")
@@ -355,7 +357,9 @@ public object SdkManager {
 
     }
     public fun stop485Port() {
-        serialPortManager.closePort()
+        GlobalScope.launch {
+            SerialPortManager.closePort()
+        }
     }
 
     // 485
@@ -387,18 +391,16 @@ public object SdkManager {
 //        mgr.factoryReset()
     }
 
-    fun initSerial() {
-        serialPortManager = SerialPortManager("/dev/ttyS6")
+    suspend fun initSerial() {
 
-        if (serialPortManager.openPort()) {
-            serialPortManager.setListener { data ->
+        if (SerialPortManager.openPort()) {
+            SerialPortManager.setListener { data ->
                 // 处理接收到的数据
 
                 val dataString = data.toHexString()
                 handlePortData(dataString)
             }
-            serialPortManager.startReading()
-        } else {
+            SerialPortManager.startReading()
         }
     }
 }
