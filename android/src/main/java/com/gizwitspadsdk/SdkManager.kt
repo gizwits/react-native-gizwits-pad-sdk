@@ -147,9 +147,11 @@ public object SdkManager {
         val functionCode = s.substring(2,4);
         var isEnd = false;
         if (functionCode == "03") {
+            if (s.length < 8) return false
             isEnd = true
         }
         if (functionCode == "10") {
+            if (s.length < 14) return false
             val size = s.substring(12,14).toInt(16)
             val dataSize = (s.length - 14 - 4) / 2
             if (dataSize == size){
