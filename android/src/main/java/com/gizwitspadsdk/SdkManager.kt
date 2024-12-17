@@ -9,7 +9,10 @@ import android.provider.Settings
 import androidx.core.content.ContextCompat.getSystemService
 import com.facebook.react.bridge.Promise
 import com.outes.wuheng.SerialPortManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import okhttp3.internal.toHexString
@@ -232,6 +235,8 @@ public object SdkManager {
                     receiveMessage(cacheString)
                     // println("设备上报数据 原始数据： ${cacheString}")
                      println("设备上报数据 地址： ${address} ${modebusData}")
+                } else {
+                    println("设备上报数据 但是没有变更")
                 }
                 send485PortMessage(rawData, true)
                 // println("设备上报数据 回复 ${rawData}")
@@ -278,6 +283,17 @@ public object SdkManager {
         createInitModbusData();
         androidId = getAndroidId(context)
         initSerial();
+
+
+        // 测试串口重连
+//        CoroutineScope(Dispatchers.Main).launch {
+//            while (true) {
+//                // 执行您的任务
+//                serialPortManager.closePort()
+//
+//                delay(30 * 1000)
+//            }
+//        }
 //        mgr = getSystemService(context, AispeechManager::class.java) as AispeechManager
 //
 //        mgr.set485PortMessageListener(9600, object : IAISStatusCallback.Stub() {
@@ -378,7 +394,8 @@ public object SdkManager {
             serialPortManager.setListener { data ->
                 // 处理接收到的数据
 
-                handlePortData(data.toHexString())
+                val dataString = data.toHexString()
+                handlePortData(dataString)
             }
             serialPortManager.startReading()
         } else {

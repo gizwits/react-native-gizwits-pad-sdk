@@ -2,15 +2,21 @@ package com.outes.wuheng
 
 import com.gizwitspadsdk.sendSentryError
 import jssc.SerialPort
+import jssc.SerialPort.PURGE_RXCLEAR
+import jssc.SerialPort.PURGE_TXCLEAR
 import jssc.SerialPortException
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 
 class SerialPortManager(private val portName: String) {
-    private val serialPort = SerialPort(portName)
+    private var serialPort = SerialPort(portName)
     private var isRunning = false
     private var listener: ((ByteArray) -> Unit)? = null
+    private var trying = false
 
     fun setListener(listener: (ByteArray) -> Unit) {
         this.listener = listener
@@ -18,13 +24,17 @@ class SerialPortManager(private val portName: String) {
 
     fun openPort(): Boolean {
         return try {
+            println("start open port")
+            serialPort = SerialPort(portName)
             serialPort.openPort()
             serialPort.setParams(SerialPort.BAUDRATE_9600, // 设置波特率
                 SerialPort.DATABITS_8,
                 SerialPort.STOPBITS_1,
                 SerialPort.PARITY_NONE)
+            serialPort.purgePort(PURGE_RXCLEAR or PURGE_TXCLEAR)
             true
         } catch (e: SerialPortException) {
+            println("open port error")
             e.printStackTrace()
             GlobalScope.launch {
                 reconnect()
@@ -39,11 +49,8 @@ class SerialPortManager(private val portName: String) {
     }
 
     fun closePort() {
-        isRunning = false
         try {
-            if (serialPort.isOpened) {
-                serialPort.closePort()
-            }
+            serialPort.closePort()
         } catch (e: SerialPortException) {
             e.printStackTrace()
             val extraData = mapOf(
@@ -52,13 +59,41 @@ class SerialPortManager(private val portName: String) {
             )
             sendSentryError(e, extraData)
         }
+
+//        restartSerialPortModule();
     }
 
+//    private fun restartSerialPortModule() {
+//        try {
+//            val process = Runtime.getRuntime().exec("su") // 获取 root 权限
+//            val os = DataOutputStream(process.outputStream)
+//
+//            // 执行重启串口的命令
+//            os.writeBytes("echo 0 > /sys/class/tty/ttyS0/device/enable\n") // 禁用串口
+//            os.writeBytes("echo 1 > /sys/class/tty/ttyS0/device/enable\n") // 启用串口
+//            os.flush()
+//            os.close()
+//            process.waitFor()
+//
+//        } catch (e: IOException) {
+//            e.printStackTrace()
+//            val extraData = mapOf(
+//                "errorMessage" to e.toString(),
+//                "event" to "restartSerialPortModule error"
+//            )
+//            sendSentryError(e, extraData)
+//        } catch (e: InterruptedException) {
+//            e.printStackTrace()
+//            val extraData = mapOf(
+//                "errorMessage" to e.toString(),
+//                "event" to "restartSerialPortModule error"
+//            )
+//            sendSentryError(e, extraData)
+//        }
+//    }
     fun sendData(data: ByteArray) {
         try {
-            if (serialPort.isOpened) {
-                serialPort.writeBytes(data)
-            }
+            serialPort.writeBytes(data)
         } catch (e: SerialPortException) {
             val extraData = mapOf(
                 "errorMessage" to e.toString(),
@@ -73,11 +108,9 @@ class SerialPortManager(private val portName: String) {
         CoroutineScope(Dispatchers.IO).launch {
             while (isRunning) {
                 try {
-                    if (serialPort.isOpened) {
-                        val data = serialPort.readBytes()
-                        data?.let {
-                            listener?.invoke(it)
-                        }
+                    val data = serialPort.readBytes()
+                    data?.let {
+                        listener?.invoke(it)
                     }
                     delay(10) // 控制读取频率
                 } catch (e: SerialPortException) {
@@ -88,16 +121,29 @@ class SerialPortManager(private val portName: String) {
                         "errorMessage" to e.toString(),
                         "event" to "read error, try reconnect"
                     )
+                    println("read error, try reconnect")
                     sendSentryError(e, extraData)
+                    delay(3 * 1000)
                 }
             }
         }
     }
 
     private suspend fun reconnect() {
+        if (trying) {
+            println("is trying reconnect")
+            return;
+        }
+        trying = true
         closePort() // 先关闭串口
-        while (!openPort()) { // 尝试重新打开串口
-            delay(1000) // 等待一秒后重试
+        while (trying) { // 尝试重新打开串口
+            val res = openPort()
+            if (res) {
+                // 连接成功
+                trying = false
+            } else {
+                delay(1000) // 等待一秒后重试
+            }
         }
     }
 }
