@@ -43,6 +43,7 @@ class GizwitsPadSdkClass extends Base {
     this.deviceDataCallbacks = undefined;
   }
 
+
   addDeviceDataListener(callback: DeviceDataCallback) {
     this.deviceDataCallbacks= callback
   }
@@ -50,6 +51,14 @@ class GizwitsPadSdkClass extends Base {
     return this.callbackWapper((callback: GizCallback<any, any>) => {
       NativeModules.GizwitsPadSdk.setLedStatus(
         { status },
+        callback
+      )
+    })
+  }
+  public async startOtaUpdate(filePath: string, softVersion: string): Promise<GizResult<any, any>> {
+    return this.callbackWapper((callback: GizCallback<any, any>) => {
+      NativeModules.GizwitsPadSdk.startOtaUpdate(
+        { filePath, softVersion },
         callback
       )
     })

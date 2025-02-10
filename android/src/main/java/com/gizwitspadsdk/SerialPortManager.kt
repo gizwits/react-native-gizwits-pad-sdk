@@ -114,7 +114,7 @@ object SerialPortManager {
                     data?.let {
                         listener?.invoke(it)
                     }
-                    delay(10) // 控制读取频率
+                    delay(20) // 控制读取频率
                 } catch (e: SerialPortException) {
                     e.printStackTrace()
                     // 尝试重新连接

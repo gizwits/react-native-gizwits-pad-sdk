@@ -64,6 +64,12 @@ data class GizSend485PortMessageParams(
   @SerializedName("isHex")
   val isHex: Boolean,
 )
+data class GizStartOtaUpdateParams(
+  @SerializedName("filePath")
+  val filePath: String,
+  @SerializedName("softVersion")
+  val softVersion: String,
+)
 
 
 class GizwitsPadSdkModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext),
@@ -197,6 +203,14 @@ class GizwitsPadSdkModule(reactContext: ReactApplicationContext) : ReactContextB
     }
   }
 
+  @ReactMethod
+  fun startOtaUpdate(options: ReadableMap, result: Callback) {
+    val config = RNGizParamsChecker.check<GizStartOtaUpdateParams>(options, result, GizStartOtaUpdateParams::class.java)
+    config?.let {
+        sdkHandler.startOtaUpdate(config.filePath, config.softVersion)
+        GizRNCallbackManager.callbackWithResult(callback = result, result = Result.success(Unit))
+    }
+  }
   @ReactMethod
   fun setRelay(options: ReadableMap, result: Callback) {
     var config = RNGizParamsChecker.check(options, result, GizSetRelayParams::class.java)
