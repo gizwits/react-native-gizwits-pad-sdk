@@ -20,7 +20,6 @@ import kotlinx.coroutines.sync.withLock
 import okio.Utf8
 import java.io.File
 
-
 public interface MessageListener {
     fun onMessageReceived(message: String)
 }
@@ -116,7 +115,8 @@ public object SdkManager {
 
     // filePath 是本地文件路径
     fun startOtaUpdate(filePath: String, softVersion: String) {
-        println("startOtaUpdate filePath: $filePath, softVersion: $softVersion")
+        val currentSoftVersion = this.softVersion;
+        println("startOtaUpdate filePath: $filePath, softVersion: $softVersion, currentSoftVersion: $currentSoftVersion")
         if (softVersion == this.softVersion) {
             println("当前固件版本与请求的固件版本相同，跳过更新")
             return
@@ -190,6 +190,16 @@ public object SdkManager {
                 isEnd = false
             }
         }
+        if (functionCode == "14") {
+            if (s.length < 6) return false
+            val size = s.substring(4,6).toInt(16);
+            val dataSize = (s.length - 6 - 4) / 2
+            if (dataSize == size){
+                isEnd = true
+            } else {
+                isEnd = false
+            }
+        }
         return isEnd;
 
     }
@@ -251,10 +261,11 @@ public object SdkManager {
             return // 忽略数据
         }
 
+        println("接收到的数据: isEnd: $isEnd, cacheString:$cacheString")
         if (isEnd) {
             val functionCode = cacheString.substring(2, 4)
             val address = cacheString.substring(4, 8).toInt(16)
-            
+            println("接收到的数据: $cacheString, functionCode: $functionCode")
             when (functionCode) {
                 "14" -> {  // 读文件记录
                     try {
@@ -266,16 +277,16 @@ public object SdkManager {
                         }
 
                         // 解析子请求参数
-                        val subReqRefType = cacheString.substring(8, 10).toInt(16)  // 应该是 0x06
-                        val fileNumber = cacheString.substring(10, 14).toInt(16)    // 文件号
-                        val recordNumber = cacheString.substring(14, 18).toInt(16)  // 记录号（起始地址）
-                        val recordLength = cacheString.substring(18, 22).toInt(16)  // 记录长度
+                        val subReqRefType = cacheString.substring(6, 8).toInt(16)  // 应该是 0x06
+                        val fileNumber = cacheString.substring(8, 12).toInt(16)    // 文件号
+                        val recordNumber = cacheString.substring(12, 16).toInt(16)  // 记录号（起始地址）
+                        val recordLength = cacheString.substring(16, 20).toInt(16)  // 记录长度
 
                         println("Read file record request: fileNumber=$fileNumber, recordNumber=$recordNumber, recordLength=$recordLength")
 
                         // 计算需要读取的数据长度
                         val startAddress = recordNumber
-                        val dataLength = recordLength * 2  // 每个记录2字节
+                        val dataLength = recordLength
                         
                         if (startAddress + dataLength > bytes.size) {
                             println("Request range exceeds firmware size")
@@ -283,20 +294,19 @@ public object SdkManager {
                         }
 
                         // 提取固件数据
-                        val firmwareData = bytes.slice(startAddress until (startAddress + dataLength))
+                        val firmwareData = bytes.copyOfRange(startAddress, startAddress + dataLength)
                         val dataHex = firmwareData.joinToString("") { "%02X".format(it) }
 
                         // 构建响应
                         val response = buildString {
                             append("80")  // 从机地址
                             append("14")  // 功能码
-                            
-                            // 计算响应数据总长度（不包含CRC）
-                            val responseDataLength = 3 + dataLength  // 1(文件响应长度) + 1(参考类型) + 1(数据长度) + 数据长度
-                            append(responseDataLength.toString(16).padStart(2, '0'))  // 响应数据长度
-                            
-                            append(dataLength.toString(16).padStart(2, '0'))  // 文件响应长度
+
+                            // 响应数据总长度（不包含CRC） = 数据内容长度 + 1(参考类型字节长度) + 2(数据记录字节长度)
+                            append((dataLength + 1 + 2).toString(16).padStart(2, '0'))
+
                             append("06")  // 参考类型
+                            append(dataLength.toString(16).padStart(4, '0'))  // 数据记录长度
                             append(dataHex)  // 记录数据
                         }
 
@@ -489,7 +499,6 @@ public object SdkManager {
         if (SerialPortManager.openPort()) {
             SerialPortManager.setListener { data ->
                 // 处理接收到的数据
-
                 val dataString = data.toHexString()
                 handlePortData(dataString)
             }
