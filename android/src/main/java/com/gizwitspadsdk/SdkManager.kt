@@ -286,7 +286,7 @@ public object SdkManager {
 
                         // 计算需要读取的数据长度
                         val startAddress = recordNumber
-                        val dataLength = recordLength
+                        val dataLength = recordLength * 2 // 每个字节对应两个十六进制字符
                         
                         if (startAddress + dataLength > bytes.size) {
                             println("Request range exceeds firmware size")
@@ -302,11 +302,10 @@ public object SdkManager {
                             append("80")  // 从机地址
                             append("14")  // 功能码
 
-                            // 响应数据总长度（不包含CRC） = 数据内容长度 + 1(参考类型字节长度) + 2(数据记录字节长度)
-                            append((dataLength + 1 + 2).toString(16).padStart(2, '0'))
-
+                            // 响应数据总长度（不包含CRC） = 数据内容长度 + 1(参考类型字节长度) + 1(数据记录字节长度)
+                            append((dataLength + 1 + 1).toString(16).padStart(2, '0'))
+                            append((dataLength + 1).toString(16).padStart(2, '0'))  // 数据记录长度 = 数据内容长度 + 1(参考类型字节长度)
                             append("06")  // 参考类型
-                            append(dataLength.toString(16).padStart(4, '0'))  // 数据记录长度
                             append(dataHex)  // 记录数据
                         }
 
@@ -331,7 +330,8 @@ public object SdkManager {
                     val rawData = hexString + crc
                     // 替换本地缓存
                     val hasUpdate = replaceStringAtAddress(address, modebusData)
-                    if (hasUpdate) {
+                    println("设备上报数据 ${hasUpdate} 地址： ${address} rawdata: ${s} cacheString: ${cacheString} modebusData: ${modebusData}")
+                    if (true) {
                         receiveMessage(cacheString)
                         // println("设备上报数据 原始数据： ${cacheString}")
                          println("设备上报数据 地址： ${address} ${modebusData}")
@@ -452,6 +452,7 @@ public object SdkManager {
             // 调用服务的代码
 //            mgr.send485PortMessage(data, 9600, isHex)
             SerialPortManager.sendData(data.hexStringToByteArray())
+            println("send485PortMessage: $data")
         } catch (e: DeadObjectException) {
             // 记录异常日志
             println("SdkManager DeadObjectException: Service might be down")
@@ -500,6 +501,7 @@ public object SdkManager {
             SerialPortManager.setListener { data ->
                 // 处理接收到的数据
                 val dataString = data.toHexString()
+                println("Received data: $dataString")
                 handlePortData(dataString)
             }
             SerialPortManager.startReading()
