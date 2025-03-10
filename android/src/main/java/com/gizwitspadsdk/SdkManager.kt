@@ -288,13 +288,13 @@ public object SdkManager {
                         val startAddress = recordNumber
                         val dataLength = recordLength * 2 // 每个字节对应两个十六进制字符
                         
-                        if (startAddress + dataLength > bytes.size) {
+                        if (startAddress * dataLength < 0 || (startAddress + 1) * dataLength > bytes.size) {
                             println("Request range exceeds firmware size")
                             return
                         }
 
                         // 提取固件数据
-                        val firmwareData = bytes.copyOfRange(startAddress, startAddress + dataLength)
+                        val firmwareData = bytes.copyOfRange(startAddress * dataLength, (startAddress + 1) * dataLength)
                         val dataHex = firmwareData.joinToString("") { "%02X".format(it) }
 
                         // 构建响应
