@@ -28,7 +28,6 @@ public object SdkManager {
 //    lateinit var mgr: AispeechManager;
     private var firmwareBytes: ByteArray? = null
     private var softVersion: String? = null
-    private var currentOtaAddress: Int = 0  // 记录当前OTA传输的地址
     var readySendCmdIndex: MutableList<Int> = mutableListOf()
     var cacheString = ""
     private val mutex = Mutex()
@@ -287,14 +286,16 @@ public object SdkManager {
                         // 计算需要读取的数据长度
                         val startAddress = recordNumber
                         val dataLength = recordLength * 2 // 每个字节对应两个十六进制字符
-                        
-                        if (startAddress * dataLength < 0 || (startAddress + 1) * dataLength > bytes.size) {
+
+                        val startIndex = startAddress * dataLength
+                        val endIndex = (startAddress + 1) * dataLength
+                        if (startIndex < 0 || endIndex > bytes.size) {
                             println("Request range exceeds firmware size")
                             return
                         }
 
                         // 提取固件数据
-                        val firmwareData = bytes.copyOfRange(startAddress * dataLength, (startAddress + 1) * dataLength)
+                        val firmwareData = bytes.copyOfRange(startIndex, endIndex)
                         val dataHex = firmwareData.joinToString("") { "%02X".format(it) }
 
                         // 构建响应
@@ -315,8 +316,8 @@ public object SdkManager {
 
                         // 发送响应
                         send485PortMessage(finalResponse, true)
-                        currentOtaAddress = startAddress + dataLength
 
+                        println("功能码14，接收数据: ${cacheString}, 回复: ${finalResponse}")
                         println("Sent firmware data: startAddress=$startAddress, length=$dataLength")
                     } catch (e: Exception) {
                         println("Error handling file record read request: ${e.message}")
@@ -330,17 +331,14 @@ public object SdkManager {
                     val rawData = hexString + crc
                     // 替换本地缓存
                     val hasUpdate = replaceStringAtAddress(address, modebusData)
-                    println("设备上报数据 ${hasUpdate} 地址： ${address} rawdata: ${s} cacheString: ${cacheString} modebusData: ${modebusData}")
-                    if (true) {
+                    if (hasUpdate) {
                         receiveMessage(cacheString)
-                        // println("设备上报数据 原始数据： ${cacheString}")
-                         println("设备上报数据 地址： ${address} ${modebusData}")
+                         println("设备上报数据 地址：${address} modebusData：${modebusData}")
                     } else {
                         println("设备上报数据 但是没有变更: ${address} ${modebusData}")
                     }
                     send485PortMessage(rawData, true)
-                    // println("设备上报数据 回复 ${rawData}")
-
+                    println("功能码10，起始地址：${address}，接收数据: ${cacheString}, 回复: ${rawData}")
                 }
                 
                 "03" -> {
@@ -354,16 +352,13 @@ public object SdkManager {
                     }
 
                     val len = cacheString.substring(8, 12).toInt(16)
-                    // println("设备查询数据: $cacheString, len: ${len} address: ${address}")
                     var hexString = getSubstringFromAddress(address, len)
-                    println("设备查询数据 len: ${len} address: ${address}, 回复: $hexString")
 
                     hexString = "8003${(len * 2).toHexString().padStart(2, '0')}${hexString}"
-
                     hexString = "${hexString}${calculateCRC(hexString)}"
-
-
                     send485PortMessage(hexString, true)
+
+                    println("功能码03，起始地址：${address}，寄存器数目：${len}，接收数据: ${cacheString}, 回复: ${hexString}")
 
                     // 中控读走了 address 开始 len 长度的数据
                     // 把 address 到 len的index 删除
