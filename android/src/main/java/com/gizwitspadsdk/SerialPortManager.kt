@@ -12,13 +12,19 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.DataOutputStream
 import java.io.IOException
-
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.atomic.AtomicBoolean
 
 object SerialPortManager {
     private var serialPort = SerialPort("/dev/ttyS6")
     private var isRunning = false
     private var listener: ((ByteArray) -> Unit)? = null
     private var trying = false
+    
+    // 添加写入队列和写入线程控制，设置队列容量为10000
+    private val writeQueue = LinkedBlockingQueue<ByteArray>(10000)
+    private val isWriteThreadRunning = AtomicBoolean(false)
+    private var writeThread: Thread? = null
 
     fun setListener(listener: (ByteArray) -> Unit) {
         this.listener = listener
@@ -33,6 +39,7 @@ object SerialPortManager {
                 SerialPort.STOPBITS_1,
                 SerialPort.PARITY_NONE)
             serialPort.purgePort(PURGE_RXCLEAR or PURGE_TXCLEAR)
+            startWriteThreadIfNeeded()
             true
         } catch (e: SerialPortException) {
             println("open port error")
@@ -49,6 +56,14 @@ object SerialPortManager {
 
     suspend fun closePort() {
         try {
+            // 停止写入线程
+            isWriteThreadRunning.set(false)
+            writeThread?.interrupt()
+            writeThread = null
+            
+            // 清空写入队列
+            writeQueue.clear()
+            
             serialPort.closePort()
         } catch (e: SerialPortException) {
             e.printStackTrace()
@@ -93,15 +108,73 @@ object SerialPortManager {
             sendSentryError(e, extraData)
         }
     }
+
+    // fun sendData(data: ByteArray) {
+    //     try {
+    //         serialPort.writeBytes(data)
+    //     } catch (e: SerialPortException) {
+    //         val extraData = mapOf(
+    //             "errorMessage" to e.toString(),
+    //             "event" to "send data error"
+    //         )
+    //         sendSentryError(e, extraData)
+    //     }
+    // }
+
     fun sendData(data: ByteArray) {
         try {
-            serialPort.writeBytes(data)
-        } catch (e: SerialPortException) {
+            // 如果队列满了，先移除最旧的数据
+            if (writeQueue.remainingCapacity() == 0) {
+                writeQueue.poll() // 移除最旧的数据
+                val extraData = mapOf(
+                    "errorMessage" to "Write queue is full, dropping oldest data",
+                    "event" to "queue full warning",
+                    "queueSize" to writeQueue.size.toString()
+                )
+                sendSentryError(Exception("Write queue is full"), extraData)
+                println("Write queue is full")
+            }
+            // 添加新数据
+            writeQueue.offer(data)
+        } catch (e: Exception) {
             val extraData = mapOf(
                 "errorMessage" to e.toString(),
-                "event" to "send data error"
+                "event" to "queue data error"
             )
             sendSentryError(e, extraData)
+        }
+    }
+
+    private fun startWriteThreadIfNeeded() {
+        if (!isWriteThreadRunning.get()) {
+            isWriteThreadRunning.set(true)
+            writeThread = Thread {
+                while (isWriteThreadRunning.get()) {
+                    try {
+                        val data = writeQueue.poll()
+                        if (data != null) {
+                            serialPort.writeBytes(data)
+                        } else {
+                            Thread.sleep(10) // 避免空转
+                        }
+                    } catch (e: SerialPortException) {
+                        val extraData = mapOf(
+                            "errorMessage" to e.toString(),
+                            "event" to "write thread error"
+                        )
+                        sendSentryError(e, extraData)
+                        // 发生错误时暂停写入
+                        Thread.sleep(1000)
+                    } catch (e: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        break
+                    }
+                }
+            }.apply {
+                name = "SerialPortWriteThread"
+                isDaemon = true
+                start()
+            }
         }
     }
 
