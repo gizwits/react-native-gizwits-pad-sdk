@@ -14,6 +14,9 @@ import java.io.DataOutputStream
 import java.io.IOException
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
+import android.util.Log
+
+private const val TAG = "GizwitsPadSDK - SerialPortManager"
 
 object SerialPortManager {
     private var serialPort = SerialPort("/dev/ttyS6")
@@ -32,7 +35,7 @@ object SerialPortManager {
 
     suspend fun openPort(): Boolean {
         return try {
-            println("start open port")
+            Log.i(TAG, "start open port")
             serialPort.openPort()
             serialPort.setParams(SerialPort.BAUDRATE_9600, // 设置波特率
                 SerialPort.DATABITS_8,
@@ -42,7 +45,7 @@ object SerialPortManager {
             startWriteThreadIfNeeded()
             true
         } catch (e: SerialPortException) {
-            println("open port error")
+            Log.e(TAG, "open port error", e)
             e.printStackTrace()
             reconnect()
             val extraData = mapOf(
@@ -81,7 +84,7 @@ object SerialPortManager {
         try {
             val process = Runtime.getRuntime().exec("su") // 获取 root 权限
             val os = DataOutputStream(process.outputStream)
-            println("运行重启串口")
+            Log.i(TAG, "运行重启串口")
             // 执行重启串口的命令
             os.writeBytes("echo 0 > /sys/class/tty/ttyS6/device/enable\n") // 禁用串口
             os.flush()
@@ -90,7 +93,7 @@ object SerialPortManager {
             os.flush()
             os.close()
             process.waitFor()
-            println("运行重启串口结束")
+            Log.i(TAG, "运行重启串口结束")
 
         } catch (e: IOException) {
             e.printStackTrace()
@@ -132,11 +135,12 @@ object SerialPortManager {
                     "queueSize" to writeQueue.size.toString()
                 )
                 sendSentryError(Exception("Write queue is full"), extraData)
-                println("Write queue is full")
+                Log.w(TAG, "Write queue is full, dropping oldest data")
             }
             // 添加新数据
             writeQueue.offer(data)
         } catch (e: Exception) {
+            Log.e(TAG, "Error adding data to write queue", e)
             val extraData = mapOf(
                 "errorMessage" to e.toString(),
                 "event" to "queue data error"
@@ -158,6 +162,7 @@ object SerialPortManager {
                             Thread.sleep(10) // 避免空转
                         }
                     } catch (e: SerialPortException) {
+                        Log.e(TAG, "Error writing to serial port", e)
                         val extraData = mapOf(
                             "errorMessage" to e.toString(),
                             "event" to "write thread error"
@@ -192,11 +197,11 @@ object SerialPortManager {
                     e.printStackTrace()
                     // 尝试重新连接
                     reconnect()
+                    Log.w(TAG, "read error, try reconnect", e)
                     val extraData = mapOf(
                         "errorMessage" to e.toString(),
                         "event" to "read error, try reconnect"
                     )
-                    println("read error, try reconnect")
                     sendSentryError(e, extraData)
                     delay(3 * 1000)
                 }
@@ -206,7 +211,7 @@ object SerialPortManager {
 
     private suspend fun reconnect() {
         if (trying) {
-            println("is trying reconnect")
+            Log.w(TAG, "is trying reconnect")
             return;
         }
         trying = true
