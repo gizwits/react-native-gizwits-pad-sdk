@@ -420,6 +420,9 @@ public object SdkManager {
                         // 发送响应
                         send485PortMessage(finalResponse, true)
 
+                        // 客户需求，需要把读取文件信息上报应用层
+                        receiveMessage(cacheString)
+
                         Log.i(TAG, "功能码14，接收数据: ${cacheString}, 回复: ${finalResponse}")
                         Log.i(TAG, "Sent firmware data: startAddress=$startAddress, length=$dataLength")
                     } catch (e: Exception) {
