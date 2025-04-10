@@ -306,179 +306,223 @@ public object SdkManager {
         setBitInHexString(7, 0, 1)
     }
 
+    // 处理串口数据
     fun handlePortData(s: String) {
-        var isEnd = false
+        try {
+            // 检查数据有效性
+            if (s.isEmpty()) {
+                Log.w(TAG, "接收到的数据为空")
+                return
+            }
 
-        // 检查接收到的数据长度
-        if (s.length < 2) {
-            Log.w(TAG, "接收到的数据长度不足，忽略该数据")
-            val extraData = mapOf(
-                "errorMessage" to "接收到的数据长度不足，忽略该数据",
-                "event" to "len error",
-                "data" to cacheString
-            )
-            sendSentryError(Error("长度错误"), extraData)
-            return // 忽略数据
-        }
-
-        if (s.substring(0, 2).equals("80")) {
-            cacheString = s
-            isEnd = checkIsEnd(cacheString)
-        } else {
+            // 处理缓存数据
             cacheString += s
-            isEnd = checkIsEnd(cacheString)
-        }
-
-        // 检查缓存数据的长度
-        if (cacheString.length < 12) { // 根据需要设置最小长度
-            val message = "缓存数据长度不足，当前长度: ${cacheString.length}，忽略该数据"
-            Log.w(TAG, message)
-            val extraData = mapOf(
-                "errorMessage" to message,
-                "event" to "len error",
-                "data" to cacheString
-            )
-            sendSentryError(Error("长度错误"), extraData)
-            return // 忽略数据
-        }
-
-        Log.d(TAG, "接收到的数据: isEnd: $isEnd, cacheString:$cacheString")
-        if (isEnd) {
-            if (!cacheString.substring(0, 2).equals("80")) {
-                cacheString = "";
-                Log.w(TAG, "非本从机地址, 忽略该数据，接收到的数据: $cacheString")
-                val extraData = mapOf(
-                    "errorMessage" to "非本从机地址数据",
-                    "event" to "从机地址校验失败",
-                    "data" to cacheString
-                )
-                sendSentryError(Error("从机地址校验失败"), extraData)
+            
+            // 验证从机地址
+            if (!cacheString.startsWith("80")) {
+                handleInvalidAddress(s)
                 return
             }
-            if (!validateModbusMessage(cacheString)) {
-                cacheString = ""
-                Log.w(TAG, "CRC校验失败, 忽略该数据，接收到的数据: $cacheString")
-                val extraData = mapOf(
-                    "errorMessage" to "CRC校验失败",
-                    "event" to "CRC校验失败",
-                    "data" to cacheString
-                )
-                sendSentryError(Error("CRC校验失败"), extraData)
+
+            // 检查数据长度是否足够
+            if (cacheString.length < 4) {
                 return
             }
+
+            // 解析功能码，根据功能码截取数据包
             val functionCode = cacheString.substring(2, 4)
-            val address = cacheString.substring(4, 8).toInt(16)
-            Log.d(TAG, "接收到的数据: $cacheString, functionCode: $functionCode")
-            when (functionCode) {
-                "14" -> {  // 读文件记录
-                    try {
-                        // 解析请求
-                        val bytes = firmwareBytes
-                        if (bytes == null) {
-                            Log.w(TAG, "No firmware data available")
-                            return
-                        }
-
-                        // 解析子请求参数
-                        val subReqRefType = cacheString.substring(6, 8).toInt(16)  // 应该是 0x06
-                        val fileNumber = cacheString.substring(8, 12).toInt(16)    // 文件号
-                        val recordNumber = cacheString.substring(12, 16).toInt(16)  // 记录号（起始地址）
-                        val recordLength = cacheString.substring(16, 20).toInt(16)  // 记录长度
-
-                        Log.i(TAG, "Read file record request: fileNumber=$fileNumber, recordNumber=$recordNumber, recordLength=$recordLength")
-
-                        // 计算需要读取的数据长度
-                        val startAddress = recordNumber
-                        val dataLength = recordLength * 2 // 每个字节对应两个十六进制字符
-
-                        val startIndex = startAddress * dataLength
-                        val endIndex = (startAddress + 1) * dataLength
-                        if (startIndex < 0 || endIndex > bytes.size) {
-                            Log.w(TAG, "Request range exceeds firmware size")
-                            return
-                        }
-
-                        // 提取固件数据
-                        val firmwareData = bytes.copyOfRange(startIndex, endIndex)
-                        val dataHex = firmwareData.joinToString("") { "%02X".format(it) }
-
-                        // 构建响应
-                        val response = buildString {
-                            append("80")  // 从机地址
-                            append("14")  // 功能码
-
-                            // 响应数据总长度（不包含CRC） = 数据内容长度 + 1(参考类型字节长度) + 1(数据记录字节长度)
-                            append((dataLength + 1 + 1).toString(16).padStart(2, '0'))
-                            append((dataLength + 1).toString(16).padStart(2, '0'))  // 数据记录长度 = 数据内容长度 + 1(参考类型字节长度)
-                            append("06")  // 参考类型
-                            append(dataHex)  // 记录数据
-                        }
-
-                        // 添加CRC校验
-                        val finalResponse = appendCRC(response)
-
-                        // 发送响应
-                        send485PortMessage(finalResponse, true)
-
-                        // 客户需求，需要把读取文件信息上报应用层
-                        receiveMessage(cacheString)
-
-                        Log.i(TAG, "功能码14，接收数据: ${cacheString}, 回复: ${finalResponse}")
-                        Log.i(TAG, "Sent firmware data: startAddress=$startAddress, length=$dataLength")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error handling file record read request: ${e.message}", e)
-                    }
-                }
-                "10" -> {
-                    try {
-                        val modebusData = cacheString.substring(14, cacheString.length)
-                        // 替换本地缓存
-                        val hasUpdate = replaceStringAtAddress(address, modebusData)
-                        if (hasUpdate) {
-                            receiveMessage(cacheString)
-                        } else {
-                            Log.i(TAG, "设备上报数据，但是没有变更: ${address} ${modebusData}")
-                        }
-                        val hexString = cacheString.substring(0, 12)
-                        val rawData = appendCRC(hexString)
-                        send485PortMessage(rawData, true)
-                        Log.i(TAG, "功能码10，起始地址：${address}，接收数据: ${cacheString}, 回复: ${rawData}")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error handling function code 10: ${e.message}", e)
-                    }
-                }
-                "03" -> {
-                    try {
-                        // 不需要上报，本地处理
-                        // receiveMessage(cacheString)
-                        // 如果当前上电状态是1 先不回复
-                        val powerUp = getBitInHexString(7, 0)
-                        if (powerUp == 1) {
-                            Log.w(TAG, "当前处于上电状态，先不回复")
-                            return
-                        }
-
-                        val len = cacheString.substring(8, 12).toInt(16)
-                        var hexString = getSubstringFromAddress(address, len)
-
-                        hexString = "8003${(len * 2).toHexString().padStart(2, '0')}${hexString}"
-                        hexString = appendCRC(hexString)
-                        send485PortMessage(hexString, true)
-
-                        Log.i(TAG, "功能码03，起始地址：${address}，寄存器数目：${len}，接收数据: ${cacheString}, 回复: ${hexString}")
-
-                        // 中控读走了 address 开始 len 长度的数据
-                        // 把 address 到 len的index 删除
-                        GlobalScope.launch {
-                            removeReadySendCmdIndex(address, address + len)
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error handling function code 03: ${e.message}", e)
-                    }
+            val packageData = when (functionCode) {
+                "03" -> interceptFunction03()
+                "10" -> interceptFunction10()
+                "14" -> interceptFunction14()
+                else -> {
+                    handleInvalidFunctionCode(s)
+                    return
                 }
             }
 
+            // 处理数据包
+            if (packageData.isNotEmpty()) {
+                Log.d(TAG, "接收到的数据包: $packageData，缓存数据: $cacheString")
+                processPackageData(packageData)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "处理串口数据时发生错误: ${e.message}", e)
             cacheString = ""
+            sendErrorToSentry("处理错误", "处理串口数据时发生错误", e.message ?: "未知错误")
+        }
+    }
+
+    // 发送错误到sentry
+    private fun sendErrorToSentry(errorType: String, message: String, data: String) {
+        val extraData = mapOf(
+            "errorMessage" to message,
+            "event" to errorType,
+            "data" to data
+        )
+        sendSentryError(Error(errorType), extraData)
+    }
+
+    // 处理无效地址
+    private fun handleInvalidAddress(s: String) {
+        cacheString = ""
+        Log.w(TAG, "从属地址无效，忽略数据: $s")
+        sendErrorToSentry("地址错误", "从属地址无效，忽略数据", s)
+    }
+
+    // 处理无效功能码
+    private fun handleInvalidFunctionCode(s: String) {
+        cacheString = ""
+        Log.w(TAG, "功能码错误，忽略数据: $s")
+        sendErrorToSentry("功能码错误", "功能码错误，忽略数据", s)
+    }
+
+    // 截取功能码03包数据
+    private fun interceptFunction03(): String {
+        if (cacheString.length < 16) return ""
+        val packageData = cacheString.substring(0, 16)
+        cacheString = cacheString.substring(16)
+        return packageData
+    }
+
+    // 截取功能码10包数据
+    private fun interceptFunction10(): String {
+        if (cacheString.length < 14) return ""
+        val size = cacheString.substring(12, 14).toInt(16)
+        val packageLength = 14 + size * 2 + 4
+        if (cacheString.length < packageLength) return ""
+        val packageData = cacheString.substring(0, packageLength)
+        cacheString = cacheString.substring(packageLength)
+        return packageData
+    }
+
+    // 截取功能码14包数据
+    private fun interceptFunction14(): String {
+        if (cacheString.length < 6) return ""
+        val size = cacheString.substring(4, 6).toInt(16)
+        val packageLength = 6 + size * 2 + 4
+        if (cacheString.length < packageLength) return ""
+        val packageData = cacheString.substring(0, packageLength)
+        cacheString = cacheString.substring(packageLength)
+        return packageData
+    }
+
+    // 处理数据包
+    private fun processPackageData(packageData: String) {
+        if (!validateModbusMessage(packageData)) {
+            Log.w(TAG, "CRC校验失败，忽略数据: $packageData")
+            sendErrorToSentry("CRC校验失败", "CRC校验失败，忽略数据", packageData)
+            return
+        }
+
+        val functionCode = packageData.substring(2, 4)
+
+        when (functionCode) {
+            "10" -> handleWriteMultipleRegisters(packageData)
+            "14" -> handleFileRecordRead(packageData)
+            "03" -> handleReadHoldingRegisters(packageData)
+        }
+    }
+
+    // 处理功能码10
+    private fun handleWriteMultipleRegisters(packageData: String) {
+        try {
+            val address = packageData.substring(4, 8).toInt(16)
+            val modebusData = packageData.substring(14, packageData.length)
+            val hasUpdate = replaceStringAtAddress(address, modebusData)
+            
+            if (hasUpdate) {
+                receiveMessage(packageData)
+            } else {
+                Log.i(TAG, "设备上报数据，但是没有变更, 地址: $address, 数据: $modebusData")
+            }
+
+            val hexString = packageData.substring(0, 12)
+            val rawData = appendCRC(hexString)
+            send485PortMessage(rawData, true)
+            
+            Log.i(TAG, "功能码10, 起始地址：$address, 接收数据: $packageData, 回复: $rawData")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling function code 10: ${e.message}", e)
+        }
+    }
+
+    // 处理功能码14
+    private fun handleFileRecordRead(packageData: String) {
+        try {
+            val bytes = firmwareBytes ?: run {
+                Log.w(TAG, "No firmware data available")
+                return
+            }
+
+            // 解析请求参数
+            val referenceType = packageData.substring(6, 8).toInt(16)  // 参考类型
+            val fileNumber = packageData.substring(8, 12).toInt(16)    // 文件号
+            val recordNumber = packageData.substring(12, 16).toInt(16)  // 记录号（起始地址）
+            val recordLength = packageData.substring(16, 20).toInt(16)  // 记录长度
+
+            Log.i(TAG, "读取固件请求, 参考类型: $referenceType, 文件号: $fileNumber, 记录号: $recordNumber, 记录长度: $recordLength")
+
+            // 计算数据范围
+            val startAddress = recordNumber
+            val dataLength = recordLength * 2
+            val startIndex = startAddress * dataLength
+            val endIndex = (startAddress + 1) * dataLength
+
+            if (startIndex < 0 || endIndex > bytes.size) {
+                Log.w(TAG, "Request range exceeds firmware size")
+                return
+            }
+
+            // 提取并处理固件数据
+            val firmwareData = bytes.copyOfRange(startIndex, endIndex)
+            val dataHex = firmwareData.joinToString("") { "%02X".format(it) }
+
+            // 构建响应
+            val response = buildString {
+                append("80")  // 从机地址
+                append("14")  // 功能码
+                append((dataLength + 2).toString(16).padStart(2, '0'))  // 总长度
+                append((dataLength + 1).toString(16).padStart(2, '0'))  // 数据记录长度
+                append("06")  // 参考类型
+                append(dataHex)  // 记录数据
+            }
+
+            val finalResponse = appendCRC(response)
+            send485PortMessage(finalResponse, true)
+            receiveMessage(packageData)
+
+            Log.i(TAG, "功能码14, 接收数据: $packageData, 回复: $finalResponse, 固件开始地址: $startAddress, 固件长度: $dataLength")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling file record read request: ${e.message}", e)
+        }
+    }
+
+    // 处理功能码03
+    private fun handleReadHoldingRegisters(packageData: String) {
+        try {
+            val powerUp = getBitInHexString(7, 0)
+            if (powerUp == 1) {
+                Log.w(TAG, "当前处于上电状态，先不回复")
+                return
+            }
+
+            val len = packageData.substring(8, 12).toInt(16)
+            val address = packageData.substring(4, 8).toInt(16)
+            var hexString = getSubstringFromAddress(address, len)
+
+            hexString = "8003${(len * 2).toHexString().padStart(2, '0')}$hexString"
+            hexString = appendCRC(hexString)
+            send485PortMessage(hexString, true)
+
+            Log.i(TAG, "功能码03, 起始地址：$address, 寄存器数目：$len, 接收数据: $packageData, 回复: $hexString")
+
+            // 移除已发送的命令索引,  中控读走了 address 开始 len 长度的数据, 把 address 到 len 的 index 删除
+            GlobalScope.launch {
+                removeReadySendCmdIndex(address, address + len)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling function code 03: ${e.message}", e)
         }
     }
 
@@ -601,7 +645,7 @@ public object SdkManager {
             SerialPortManager.setListener { data ->
                 // 处理接收到的数据
                 val dataString = data.toHexString()
-                println("Received data: $dataString")
+                Log.i(TAG, "读取的串口数据: $dataString")
                 handlePortData(dataString)
             }
             SerialPortManager.startReading()
