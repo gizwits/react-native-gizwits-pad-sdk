@@ -497,7 +497,7 @@ public object SdkManager {
             // Log.d(TAG, "功能码03, 起始地址：$address, 寄存器数目：$len, 接收数据: $packageData, 回复: $hexString")
 
             // 移除已发送的命令索引,  中控读走了 address 开始 len 长度的数据, 把 address 到 len 的 index 删除
-            GlobalScope.launch {
+            CoroutineScope(Dispatchers.IO).launch {
                 removeReadySendCmdIndex(address, address + len)
             }
         } catch (e: Exception) {
@@ -625,7 +625,9 @@ public object SdkManager {
                 // 处理接收到的数据
                 val dataString = data.toHexString()
                 // Log.d(TAG, "读取的串口数据: $dataString")
-                handlePortData(dataString)
+                CoroutineScope(Dispatchers.IO).launch {
+                    handlePortData(dataString)
+                }
             }
             SerialPortManager.startReading()
         }
