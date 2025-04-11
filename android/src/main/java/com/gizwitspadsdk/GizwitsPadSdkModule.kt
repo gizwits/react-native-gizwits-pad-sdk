@@ -253,6 +253,17 @@ class GizwitsPadSdkModule(reactContext: ReactApplicationContext) : ReactContextB
     GizRNCallbackManager.callbackWithResult(callback = result, result = Result.success(Unit))
   }
 
+  @ReactMethod
+  fun enableDebug(options: ReadableMap, result: Callback) {
+    LogUtils.enableDebug()
+    GizRNCallbackManager.callbackWithResult(callback = result, result = Result.success(Unit))
+  }
+
+  @ReactMethod
+  fun disableDebug(options: ReadableMap, result: Callback) {
+    LogUtils.disableDebug()
+    GizRNCallbackManager.callbackWithResult(callback = result, result = Result.success(Unit))
+  }
 
   companion object {
     const val NAME = "GizwitsPadSdk"

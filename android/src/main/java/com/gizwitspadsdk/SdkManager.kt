@@ -6,7 +6,6 @@ import android.content.Context
 import android.os.DeadObjectException
 import android.os.RemoteException
 import android.provider.Settings
-import android.util.Log
 import androidx.core.content.ContextCompat.getSystemService
 import com.facebook.react.bridge.Promise
 import com.outes.wuheng.SerialPortManager
@@ -26,16 +25,26 @@ public interface MessageListener {
 }
 
 // 用于日志记录Tag
-private const val TAG = "GizwitsPadSDK - SdkManager"
+private const val TAG = "SdkManager"
 public object SdkManager {
+    // 缓存数据长度限制
+    private const val MAX_CACHE_LENGTH = 524288 // 1MB = 1,048,576 bytes, 每个字符2字节，所以限制为524,288个字符
+    
+    // 定义常用字符串常量
+    private const val FUNCTION_CODE_03 = "03"
+    private const val FUNCTION_CODE_10 = "10"
+    private const val FUNCTION_CODE_14 = "14"
+    private const val SLAVE_ADDRESS = "80"
+    
 //    lateinit var mgr: AispeechManager;
     private var firmwareBytes: ByteArray? = null
     private var softVersion: String? = null
     private val mutex = Mutex()
     var readySendCmdIndex: MutableList<Int> = mutableListOf()
-    var cacheString = ""
+    var cacheString = StringBuilder()
     var modbusData = StringBuilder(70000 * 4)
     var androidId = ""
+
     fun createInitModbusData () {
         modbusData.clear()
         modbusData.append("0".repeat(70000 * 4))
@@ -112,9 +121,9 @@ public object SdkManager {
     // filePath 是本地文件路径
     fun startOtaUpdate(filePath: String, softVersion: String) {
         val currentSoftVersion = this.softVersion;
-        Log.d(TAG, "StartOtaUpdate filePath: $filePath, softVersion: $softVersion, currentSoftVersion: $currentSoftVersion")
+        LogUtils.d(TAG, "StartOtaUpdate filePath: $filePath, softVersion: $softVersion, currentSoftVersion: $currentSoftVersion")
         if (softVersion == this.softVersion) {
-            Log.w(TAG, "当前固件版本与请求的固件版本相同，跳过更新")
+            LogUtils.w(TAG, "当前固件版本与请求的固件版本相同，跳过更新")
             return
         }
         try {
@@ -129,33 +138,12 @@ public object SdkManager {
             this.firmwareBytes = bytes
             this.softVersion = softVersion
 
-            Log.d(TAG, "OTA update started with firmware size: ${bytes.size} bytes")
+            LogUtils.d(TAG, "OTA update started with firmware size: ${bytes.size} bytes")
         } catch (e: Exception) {
-            Log.e(TAG, "Error starting OTA update: ${e.message}", e)
+            LogUtils.e(TAG, "Error starting OTA update: ${e.message}", e)
             throw e
         }
     }
-
-//    fun calculateCRC(hexString: String): String {
-//        var crc = 0xFFFF
-//
-//        for (i in 0 until hexString.length step 2) {
-//            val byteStr = hexString.substring(i, i + 2)
-//            val byte = byteStr.toIntOrNull(16) ?: 0
-//            crc = crc xor byte
-//
-//            for (j in 0 until 8) {
-//                val flag = crc and 0x0001
-//                crc = crc ushr 1
-//                if (flag == 1) {
-//                    crc = crc xor 0xA001
-//                }
-//            }
-//        }
-//
-//        // 将 CRC 转换为十六进制字符串，长度为4，并将字节顺序反转
-//        return crc.toString(16).padStart(4, '0').chunked(2).reversed().joinToString("")
-//    }
 
     /**
      * 计算 Modbus CRC-16 校验码
@@ -165,26 +153,21 @@ public object SdkManager {
      */
     fun calculateCRC(hexString: String): String {
         // 输入验证
-        if (hexString.isEmpty()) {
-            throw IllegalArgumentException("Input hexString cannot be empty")
-        }
-
-        if (hexString.length % 2 != 0) {
-            throw IllegalArgumentException("Input hexString must have even length")
-        }
-
-        if (!hexString.matches(Regex("^[0-9A-Fa-f]+$"))) {
-            throw IllegalArgumentException("Input hexString contains invalid characters")
+        if (hexString.isEmpty() || hexString.length % 2 != 0 || 
+            !hexString.matches(Regex("^[0-9A-Fa-f]+$"))) {
+            throw IllegalArgumentException("Invalid hex string")
         }
 
         try {
-            // CRC-16/MODBUS 计算
             var crc = 0xFFFF
-
+            val chars = hexString.toCharArray()
+            
             // 按字节处理数据
             for (i in 0 until hexString.length step 2) {
-                val byteStr = hexString.substring(i, i + 2)
-                val byte = byteStr.toInt(16)
+                val high = Character.digit(chars[i], 16)
+                val low = Character.digit(chars[i + 1], 16)
+                val byte = (high shl 4) + low
+                
                 crc = crc xor byte
 
                 // 对每个位进行处理
@@ -192,18 +175,16 @@ public object SdkManager {
                     val flag = crc and 0x0001
                     crc = crc ushr 1
                     if (flag == 1) {
-                        crc = crc xor 0xA001  // MODBUS 多项式 0xA001 (反转的 0x8005)
+                        crc = crc xor 0xA001
                     }
                 }
             }
 
             // 格式化结果
             // 低字节在前，高字节在后（Little-Endian）
-            val lowByte = (crc and 0xFF).toString(16).padStart(2, '0')
-            val highByte = (crc ushr 8).toString(16).padStart(2, '0')
-
-            return "$lowByte$highByte"
-        } catch (e: Exception) {
+            return String.format("%02X%02X", crc and 0xFF, (crc ushr 8) and 0xFF)
+        }
+        catch(e: Exception) {
             throw IllegalArgumentException("Failed to calculate CRC: ${e.message}", e)
         }
     }
@@ -238,18 +219,6 @@ public object SdkManager {
     fun appendCRC(message: String): String {
         val crc = calculateCRC(message)
         return message + crc
-    }
-
-    fun hexStringToByteArray(hexString: String): ByteArray {
-        val len = hexString.length
-        val byteArray = ByteArray(len / 2)
-
-        for (i in 0 until len step 2) {
-            val byte = hexString.substring(i, i + 2).toInt(16)
-            byteArray[i / 2] = byte.toByte()
-        }
-
-        return byteArray
     }
 
     fun checkIsEnd (s:String):Boolean {
@@ -311,15 +280,22 @@ public object SdkManager {
         try {
             // 检查数据有效性
             if (s.isEmpty()) {
-                Log.w(TAG, "接收到的数据为空")
+                LogUtils.w(TAG, "接收到的数据为空")
+                return
+            }
+
+            // 检查缓存长度是否超过限制
+            if (cacheString.length + s.length > MAX_CACHE_LENGTH) {
+                LogUtils.w(TAG, "缓存数据超过1MB限制，清空缓存")
+                cacheString.clear()
                 return
             }
 
             // 处理缓存数据
-            cacheString += s
+            cacheString.append(s)
             
             // 验证从机地址
-            if (!cacheString.startsWith("80")) {
+            if (!cacheString.startsWith(SLAVE_ADDRESS)) {
                 handleInvalidAddress(s)
                 return
             }
@@ -332,9 +308,9 @@ public object SdkManager {
             // 解析功能码，根据功能码截取数据包
             val functionCode = cacheString.substring(2, 4)
             val packageData = when (functionCode) {
-                "03" -> interceptFunction03()
-                "10" -> interceptFunction10()
-                "14" -> interceptFunction14()
+                FUNCTION_CODE_03 -> interceptFunction03()
+                FUNCTION_CODE_10 -> interceptFunction10()
+                FUNCTION_CODE_14 -> interceptFunction14()
                 else -> {
                     handleInvalidFunctionCode(s)
                     return
@@ -343,12 +319,12 @@ public object SdkManager {
 
             // 处理数据包
             if (packageData.isNotEmpty()) {
-                Log.d(TAG, "接收到的数据包: $packageData，缓存数据: $cacheString")
+                LogUtils.d(TAG, "接收到的数据包: $packageData，缓存数据: $cacheString")
                 processPackageData(packageData)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "处理串口数据时发生错误: ${e.message}", e)
-            cacheString = ""
+            LogUtils.e(TAG, "处理串口数据时发生错误: ${e.message}", e)
+            cacheString.clear()
             sendErrorToSentry("处理错误", "处理串口数据时发生错误", e.message ?: "未知错误")
         }
     }
@@ -365,15 +341,15 @@ public object SdkManager {
 
     // 处理无效地址
     private fun handleInvalidAddress(s: String) {
-        cacheString = ""
-        Log.w(TAG, "从属地址无效，忽略数据: $s")
+        cacheString.clear()
+        LogUtils.w(TAG, "从属地址无效，忽略数据: $s")
         sendErrorToSentry("地址错误", "从属地址无效，忽略数据", s)
     }
 
     // 处理无效功能码
     private fun handleInvalidFunctionCode(s: String) {
-        cacheString = ""
-        Log.w(TAG, "功能码错误，忽略数据: $s")
+        cacheString.clear()
+        LogUtils.w(TAG, "功能码错误，忽略数据: $s")
         sendErrorToSentry("功能码错误", "功能码错误，忽略数据", s)
     }
 
@@ -381,7 +357,7 @@ public object SdkManager {
     private fun interceptFunction03(): String {
         if (cacheString.length < 16) return ""
         val packageData = cacheString.substring(0, 16)
-        cacheString = cacheString.substring(16)
+        cacheString.delete(0, 16)
         return packageData
     }
 
@@ -392,7 +368,7 @@ public object SdkManager {
         val packageLength = 14 + size * 2 + 4
         if (cacheString.length < packageLength) return ""
         val packageData = cacheString.substring(0, packageLength)
-        cacheString = cacheString.substring(packageLength)
+        cacheString.delete(0, packageLength)
         return packageData
     }
 
@@ -403,14 +379,14 @@ public object SdkManager {
         val packageLength = 6 + size * 2 + 4
         if (cacheString.length < packageLength) return ""
         val packageData = cacheString.substring(0, packageLength)
-        cacheString = cacheString.substring(packageLength)
+        cacheString.delete(0, packageLength)
         return packageData
     }
 
     // 处理数据包
     private fun processPackageData(packageData: String) {
         if (!validateModbusMessage(packageData)) {
-            Log.w(TAG, "CRC校验失败，忽略数据: $packageData")
+            LogUtils.w(TAG, "CRC校验失败，忽略数据: $packageData")
             sendErrorToSentry("CRC校验失败", "CRC校验失败，忽略数据", packageData)
             return
         }
@@ -418,9 +394,9 @@ public object SdkManager {
         val functionCode = packageData.substring(2, 4)
 
         when (functionCode) {
-            "10" -> handleWriteMultipleRegisters(packageData)
-            "14" -> handleFileRecordRead(packageData)
-            "03" -> handleReadHoldingRegisters(packageData)
+            FUNCTION_CODE_10 -> handleWriteMultipleRegisters(packageData)
+            FUNCTION_CODE_14 -> handleFileRecordRead(packageData)
+            FUNCTION_CODE_03 -> handleReadHoldingRegisters(packageData)
         }
     }
 
@@ -434,16 +410,16 @@ public object SdkManager {
             if (hasUpdate) {
                 receiveMessage(packageData)
             } else {
-                Log.i(TAG, "设备上报数据，但是没有变更, 地址: $address, 数据: $modebusData")
+                LogUtils.d(TAG, "设备上报数据，但是没有变更, 地址: $address, 数据: $modebusData")
             }
 
             val hexString = packageData.substring(0, 12)
             val rawData = appendCRC(hexString)
             send485PortMessage(rawData, true)
             
-            Log.i(TAG, "功能码10, 起始地址：$address, 接收数据: $packageData, 回复: $rawData")
+            LogUtils.d(TAG, "功能码10, 起始地址：$address, 接收数据: $packageData, 回复: $rawData")
         } catch (e: Exception) {
-            Log.e(TAG, "Error handling function code 10: ${e.message}", e)
+            LogUtils.e(TAG, "Error handling function code 10: ${e.message}", e)
         }
     }
 
@@ -451,7 +427,7 @@ public object SdkManager {
     private fun handleFileRecordRead(packageData: String) {
         try {
             val bytes = firmwareBytes ?: run {
-                Log.w(TAG, "No firmware data available")
+                LogUtils.w(TAG, "No firmware data available")
                 return
             }
 
@@ -461,7 +437,7 @@ public object SdkManager {
             val recordNumber = packageData.substring(12, 16).toInt(16)  // 记录号（起始地址）
             val recordLength = packageData.substring(16, 20).toInt(16)  // 记录长度
 
-            Log.i(TAG, "读取固件请求, 参考类型: $referenceType, 文件号: $fileNumber, 记录号: $recordNumber, 记录长度: $recordLength")
+            LogUtils.d(TAG, "读取固件请求, 参考类型: $referenceType, 文件号: $fileNumber, 记录号: $recordNumber, 记录长度: $recordLength")
 
             // 计算数据范围
             val startAddress = recordNumber
@@ -470,7 +446,7 @@ public object SdkManager {
             val endIndex = (startAddress + 1) * dataLength
 
             if (startIndex < 0 || endIndex > bytes.size) {
-                Log.w(TAG, "Request range exceeds firmware size")
+                LogUtils.w(TAG, "Request range exceeds firmware size")
                 return
             }
 
@@ -492,9 +468,9 @@ public object SdkManager {
             send485PortMessage(finalResponse, true)
             receiveMessage(packageData)
 
-            Log.i(TAG, "功能码14, 接收数据: $packageData, 回复: $finalResponse, 固件开始地址: $startAddress, 固件长度: $dataLength")
+            LogUtils.d(TAG, "功能码14, 接收数据: $packageData, 回复: $finalResponse, 固件开始地址: $startAddress, 固件长度: $dataLength")
         } catch (e: Exception) {
-            Log.e(TAG, "Error handling file record read request: ${e.message}", e)
+            LogUtils.e(TAG, "Error handling file record read request: ${e.message}", e)
         }
     }
 
@@ -503,7 +479,7 @@ public object SdkManager {
         try {
             val powerUp = getBitInHexString(7, 0)
             if (powerUp == 1) {
-                Log.w(TAG, "当前处于上电状态，先不回复")
+                // LogUtils.w(TAG, "当前处于上电状态，先不回复")
                 return
             }
 
@@ -515,14 +491,14 @@ public object SdkManager {
             hexString = appendCRC(hexString)
             send485PortMessage(hexString, true)
 
-            Log.i(TAG, "功能码03, 起始地址：$address, 寄存器数目：$len, 接收数据: $packageData, 回复: $hexString")
+            LogUtils.d(TAG, "功能码03, 起始地址：$address, 寄存器数目：$len, 接收数据: $packageData, 回复: $hexString")
 
             // 移除已发送的命令索引,  中控读走了 address 开始 len 长度的数据, 把 address 到 len 的 index 删除
-            GlobalScope.launch {
+            CoroutineScope(Dispatchers.IO).launch {
                 removeReadySendCmdIndex(address, address + len)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error handling function code 03: ${e.message}", e)
+            LogUtils.e(TAG, "Error handling function code 03: ${e.message}", e)
         }
     }
 
@@ -596,10 +572,10 @@ public object SdkManager {
     public fun send485PortMessage(data: String, isHex: Boolean) {
         try {
             SerialPortManager.sendData(data.hexStringToByteArray())
-            Log.d(TAG, "Send485PortMessage: $data")
+            LogUtils.d(TAG, "Send485PortMessage: $data")
         } catch (e: DeadObjectException) {
             // 记录异常日志
-            Log.e(TAG, "SdkManager DeadObjectException: Service might be down", e)
+            LogUtils.e(TAG, "SdkManager DeadObjectException: Service might be down", e)
             // 尝试恢复或重新连接逻辑
         }
 
@@ -645,8 +621,10 @@ public object SdkManager {
             SerialPortManager.setListener { data ->
                 // 处理接收到的数据
                 val dataString = data.toHexString()
-                Log.i(TAG, "读取的串口数据: $dataString")
-                handlePortData(dataString)
+                LogUtils.d(TAG, "读取的串口数据: $dataString")
+                CoroutineScope(Dispatchers.IO).launch {
+                    handlePortData(dataString)
+                }
             }
             SerialPortManager.startReading()
         }
@@ -656,6 +634,7 @@ public object SdkManager {
 fun ByteArray.toHexString(): String {
     return joinToString("") { String.format("%02x", it) }.toUpperCase()
 }
+
 fun String.hexStringToByteArray(): ByteArray {
     val len = this.length
     val data = ByteArray(len / 2)
