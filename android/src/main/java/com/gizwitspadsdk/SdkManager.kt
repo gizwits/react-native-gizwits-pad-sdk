@@ -28,6 +28,12 @@ public interface MessageListener {
 // 用于日志记录Tag
 private const val TAG = "GizwitsPadSDK - SdkManager"
 public object SdkManager {
+    // 定义常用字符串常量
+    private const val FUNCTION_CODE_03 = "03"
+    private const val FUNCTION_CODE_10 = "10"
+    private const val FUNCTION_CODE_14 = "14"
+    private const val SLAVE_ADDRESS = "80"
+    
 //    lateinit var mgr: AispeechManager;
     private var firmwareBytes: ByteArray? = null
     private var softVersion: String? = null
@@ -36,6 +42,7 @@ public object SdkManager {
     var cacheString = ""
     var modbusData = StringBuilder(70000 * 4)
     var androidId = ""
+
     fun createInitModbusData () {
         modbusData.clear()
         modbusData.append("0".repeat(70000 * 4))
@@ -144,26 +151,21 @@ public object SdkManager {
      */
     fun calculateCRC(hexString: String): String {
         // 输入验证
-        if (hexString.isEmpty()) {
-            throw IllegalArgumentException("Input hexString cannot be empty")
-        }
-
-        if (hexString.length % 2 != 0) {
-            throw IllegalArgumentException("Input hexString must have even length")
-        }
-
-        if (!hexString.matches(Regex("^[0-9A-Fa-f]+$"))) {
-            throw IllegalArgumentException("Input hexString contains invalid characters")
+        if (hexString.isEmpty() || hexString.length % 2 != 0 || 
+            !hexString.matches(Regex("^[0-9A-Fa-f]+$"))) {
+            throw IllegalArgumentException("Invalid hex string")
         }
 
         try {
-            // CRC-16/MODBUS 计算
             var crc = 0xFFFF
-
+            val chars = hexString.toCharArray()
+            
             // 按字节处理数据
             for (i in 0 until hexString.length step 2) {
-                val byteStr = hexString.substring(i, i + 2)
-                val byte = byteStr.toInt(16)
+                val high = Character.digit(chars[i], 16)
+                val low = Character.digit(chars[i + 1], 16)
+                val byte = (high shl 4) + low
+                
                 crc = crc xor byte
 
                 // 对每个位进行处理
@@ -171,18 +173,16 @@ public object SdkManager {
                     val flag = crc and 0x0001
                     crc = crc ushr 1
                     if (flag == 1) {
-                        crc = crc xor 0xA001  // MODBUS 多项式 0xA001 (反转的 0x8005)
+                        crc = crc xor 0xA001
                     }
                 }
             }
 
             // 格式化结果
             // 低字节在前，高字节在后（Little-Endian）
-            val lowByte = (crc and 0xFF).toString(16).padStart(2, '0')
-            val highByte = (crc ushr 8).toString(16).padStart(2, '0')
-
-            return "$lowByte$highByte"
-        } catch (e: Exception) {
+            return String.format("%02X%02X", crc and 0xFF, (crc ushr 8) and 0xFF)
+        }
+        catch(e: Exception) {
             throw IllegalArgumentException("Failed to calculate CRC: ${e.message}", e)
         }
     }
@@ -298,7 +298,7 @@ public object SdkManager {
             cacheString += s
             
             // 验证从机地址
-            if (!cacheString.startsWith("80")) {
+            if (!cacheString.startsWith(SLAVE_ADDRESS)) {
                 handleInvalidAddress(s)
                 return
             }
@@ -311,9 +311,9 @@ public object SdkManager {
             // 解析功能码，根据功能码截取数据包
             val functionCode = cacheString.substring(2, 4)
             val packageData = when (functionCode) {
-                "03" -> interceptFunction03()
-                "10" -> interceptFunction10()
-                "14" -> interceptFunction14()
+                FUNCTION_CODE_03 -> interceptFunction03()
+                FUNCTION_CODE_10 -> interceptFunction10()
+                FUNCTION_CODE_14 -> interceptFunction14()
                 else -> {
                     handleInvalidFunctionCode(s)
                     return
@@ -397,9 +397,9 @@ public object SdkManager {
         val functionCode = packageData.substring(2, 4)
 
         when (functionCode) {
-            "10" -> handleWriteMultipleRegisters(packageData)
-            "14" -> handleFileRecordRead(packageData)
-            "03" -> handleReadHoldingRegisters(packageData)
+            FUNCTION_CODE_10 -> handleWriteMultipleRegisters(packageData)
+            FUNCTION_CODE_14 -> handleFileRecordRead(packageData)
+            FUNCTION_CODE_03 -> handleReadHoldingRegisters(packageData)
         }
     }
 
@@ -420,7 +420,7 @@ public object SdkManager {
             val rawData = appendCRC(hexString)
             send485PortMessage(rawData, true)
             
-            // Log.d(TAG, "功能码10, 起始地址：$address, 接收数据: $packageData, 回复: $rawData")
+            Log.d(TAG, "功能码10, 起始地址：$address, 接收数据: $packageData, 回复: $rawData")
         } catch (e: Exception) {
             Log.e(TAG, "Error handling function code 10: ${e.message}", e)
         }
@@ -471,7 +471,7 @@ public object SdkManager {
             send485PortMessage(finalResponse, true)
             receiveMessage(packageData)
 
-            // Log.d(TAG, "功能码14, 接收数据: $packageData, 回复: $finalResponse, 固件开始地址: $startAddress, 固件长度: $dataLength")
+            Log.d(TAG, "功能码14, 接收数据: $packageData, 回复: $finalResponse, 固件开始地址: $startAddress, 固件长度: $dataLength")
         } catch (e: Exception) {
             Log.e(TAG, "Error handling file record read request: ${e.message}", e)
         }
@@ -494,7 +494,7 @@ public object SdkManager {
             hexString = appendCRC(hexString)
             send485PortMessage(hexString, true)
 
-            // Log.d(TAG, "功能码03, 起始地址：$address, 寄存器数目：$len, 接收数据: $packageData, 回复: $hexString")
+            Log.d(TAG, "功能码03, 起始地址：$address, 寄存器数目：$len, 接收数据: $packageData, 回复: $hexString")
 
             // 移除已发送的命令索引,  中控读走了 address 开始 len 长度的数据, 把 address 到 len 的 index 删除
             CoroutineScope(Dispatchers.IO).launch {
