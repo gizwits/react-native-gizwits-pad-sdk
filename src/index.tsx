@@ -134,7 +134,23 @@ class GizwitsPadSdkClass extends Base {
   public async factoryReset(): Promise<GizResult<any, any>> {
     return this.callbackWapper((callback: GizCallback<any, any>) => {
       NativeModules.GizwitsPadSdk.factoryReset(
-        {  },
+        {},
+        callback
+      )
+    })
+  }
+  public async enableDebug(): Promise<GizResult<any, any>> {
+    return this.callbackWapper((callback: GizCallback<any, any>) => {
+      NativeModules.GizwitsPadSdk.enableDebug(
+        {},
+        callback
+      )
+    })
+  }
+  public async disableDebug(): Promise<GizResult<any, any>> {
+    return this.callbackWapper((callback: GizCallback<any, any>) => {
+      NativeModules.GizwitsPadSdk.disableDebug(
+        {},
         callback
       )
     })
