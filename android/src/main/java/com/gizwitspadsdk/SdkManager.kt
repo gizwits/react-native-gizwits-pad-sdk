@@ -136,27 +136,6 @@ public object SdkManager {
         }
     }
 
-//    fun calculateCRC(hexString: String): String {
-//        var crc = 0xFFFF
-//
-//        for (i in 0 until hexString.length step 2) {
-//            val byteStr = hexString.substring(i, i + 2)
-//            val byte = byteStr.toIntOrNull(16) ?: 0
-//            crc = crc xor byte
-//
-//            for (j in 0 until 8) {
-//                val flag = crc and 0x0001
-//                crc = crc ushr 1
-//                if (flag == 1) {
-//                    crc = crc xor 0xA001
-//                }
-//            }
-//        }
-//
-//        // 将 CRC 转换为十六进制字符串，长度为4，并将字节顺序反转
-//        return crc.toString(16).padStart(4, '0').chunked(2).reversed().joinToString("")
-//    }
-
     /**
      * 计算 Modbus CRC-16 校验码
      * @param hexString 十六进制字符串
@@ -343,7 +322,7 @@ public object SdkManager {
 
             // 处理数据包
             if (packageData.isNotEmpty()) {
-                Log.d(TAG, "接收到的数据包: $packageData，缓存数据: $cacheString")
+                // Log.d(TAG, "接收到的数据包: $packageData，缓存数据: $cacheString")
                 processPackageData(packageData)
             }
         } catch (e: Exception) {
@@ -434,14 +413,14 @@ public object SdkManager {
             if (hasUpdate) {
                 receiveMessage(packageData)
             } else {
-                Log.i(TAG, "设备上报数据，但是没有变更, 地址: $address, 数据: $modebusData")
+                // Log.d(TAG, "设备上报数据，但是没有变更, 地址: $address, 数据: $modebusData")
             }
 
             val hexString = packageData.substring(0, 12)
             val rawData = appendCRC(hexString)
             send485PortMessage(rawData, true)
             
-            Log.i(TAG, "功能码10, 起始地址：$address, 接收数据: $packageData, 回复: $rawData")
+            // Log.d(TAG, "功能码10, 起始地址：$address, 接收数据: $packageData, 回复: $rawData")
         } catch (e: Exception) {
             Log.e(TAG, "Error handling function code 10: ${e.message}", e)
         }
@@ -461,7 +440,7 @@ public object SdkManager {
             val recordNumber = packageData.substring(12, 16).toInt(16)  // 记录号（起始地址）
             val recordLength = packageData.substring(16, 20).toInt(16)  // 记录长度
 
-            Log.i(TAG, "读取固件请求, 参考类型: $referenceType, 文件号: $fileNumber, 记录号: $recordNumber, 记录长度: $recordLength")
+            // Log.d(TAG, "读取固件请求, 参考类型: $referenceType, 文件号: $fileNumber, 记录号: $recordNumber, 记录长度: $recordLength")
 
             // 计算数据范围
             val startAddress = recordNumber
@@ -492,7 +471,7 @@ public object SdkManager {
             send485PortMessage(finalResponse, true)
             receiveMessage(packageData)
 
-            Log.i(TAG, "功能码14, 接收数据: $packageData, 回复: $finalResponse, 固件开始地址: $startAddress, 固件长度: $dataLength")
+            // Log.d(TAG, "功能码14, 接收数据: $packageData, 回复: $finalResponse, 固件开始地址: $startAddress, 固件长度: $dataLength")
         } catch (e: Exception) {
             Log.e(TAG, "Error handling file record read request: ${e.message}", e)
         }
@@ -503,7 +482,7 @@ public object SdkManager {
         try {
             val powerUp = getBitInHexString(7, 0)
             if (powerUp == 1) {
-                Log.w(TAG, "当前处于上电状态，先不回复")
+                // Log.w(TAG, "当前处于上电状态，先不回复")
                 return
             }
 
@@ -515,7 +494,7 @@ public object SdkManager {
             hexString = appendCRC(hexString)
             send485PortMessage(hexString, true)
 
-            Log.i(TAG, "功能码03, 起始地址：$address, 寄存器数目：$len, 接收数据: $packageData, 回复: $hexString")
+            // Log.d(TAG, "功能码03, 起始地址：$address, 寄存器数目：$len, 接收数据: $packageData, 回复: $hexString")
 
             // 移除已发送的命令索引,  中控读走了 address 开始 len 长度的数据, 把 address 到 len 的 index 删除
             GlobalScope.launch {
@@ -596,7 +575,7 @@ public object SdkManager {
     public fun send485PortMessage(data: String, isHex: Boolean) {
         try {
             SerialPortManager.sendData(data.hexStringToByteArray())
-            Log.d(TAG, "Send485PortMessage: $data")
+            // Log.d(TAG, "Send485PortMessage: $data")
         } catch (e: DeadObjectException) {
             // 记录异常日志
             Log.e(TAG, "SdkManager DeadObjectException: Service might be down", e)
@@ -645,7 +624,7 @@ public object SdkManager {
             SerialPortManager.setListener { data ->
                 // 处理接收到的数据
                 val dataString = data.toHexString()
-                Log.i(TAG, "读取的串口数据: $dataString")
+                // Log.d(TAG, "读取的串口数据: $dataString")
                 handlePortData(dataString)
             }
             SerialPortManager.startReading()
