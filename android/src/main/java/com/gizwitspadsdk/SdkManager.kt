@@ -404,13 +404,13 @@ public object SdkManager {
     private fun handleWriteMultipleRegisters(packageData: String) {
         try {
             val address = packageData.substring(4, 8).toInt(16)
-            val modebusData = packageData.substring(14, packageData.length)
-            val hasUpdate = replaceStringAtAddress(address, modebusData)
+            val registerData = packageData.substring(14, packageData.length - 4)  // 寄存器数据
+            val hasUpdate = replaceStringAtAddress(address, registerData)
             
             if (hasUpdate) {
                 receiveMessage(packageData)
             } else {
-                LogUtils.d(TAG, "设备上报数据，但是没有变更, 地址: $address, 数据: $modebusData")
+                LogUtils.d(TAG, "设备上报数据，但是没有变更, 地址: $address, 数据: $registerData")
             }
 
             val hexString = packageData.substring(0, 12)
@@ -479,7 +479,7 @@ public object SdkManager {
         try {
             val powerUp = getBitInHexString(7, 0)
             if (powerUp == 1) {
-                // LogUtils.w(TAG, "当前处于上电状态，先不回复")
+                LogUtils.w(TAG, "当前处于上电状态，先不回复")
                 return
             }
 
