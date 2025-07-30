@@ -1,6 +1,6 @@
 {
   "name": "react-native-gizwits-pad-sdk",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "sdk",
   "source": "./src/index.tsx",
   "main": "./lib/commonjs/index.js",
